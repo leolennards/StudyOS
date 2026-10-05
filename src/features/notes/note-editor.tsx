@@ -188,7 +188,13 @@ export function NoteEditor({
           value={title}
           onChange={changeTitle}
           readOnly={!editable}
-          onEnter={() => editor?.commands.focus("start")}
+          onEnter={() => {
+            if (!editor) return;
+            // Move focus now: the focus command waits a frame, and a key typed
+            // straight after Enter would otherwise be lost.
+            editor.view.dom.focus();
+            editor.commands.focus("start");
+          }}
         />
         <div className="flex shrink-0 items-center gap-1 pt-2">
           <SaveIndicator state={autosave.state} />
