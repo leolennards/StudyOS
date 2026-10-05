@@ -46,3 +46,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 !.env.example
+
+# PDF viewer assets, copied from pdfjs-dist before dev and build
+/public/pdfjs/
+
+# local file storage (STORAGE_DRIVER=local)
+/.data/

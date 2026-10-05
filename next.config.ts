@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
   // runs as its own CI step (next lint was removed in Next.js 16).
   typescript: { ignoreBuildErrors: false },
   // Needed so `pino` and `pg` are not bundled for the server runtime.
-  serverExternalPackages: ["pino", "pg"],
+  serverExternalPackages: ["pino", "pg", "pg-boss"],
   poweredByHeader: false,
 };
 

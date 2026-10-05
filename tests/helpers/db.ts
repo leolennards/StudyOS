@@ -7,8 +7,21 @@ import { users, workspaceMembers, workspaces } from "@/server/platform/db/schema
 /** Empties every table between tests. */
 export async function resetDatabase() {
   await getDb().execute(
-    sql`truncate table users, workspaces, workspace_members, subjects, sections, topics, user_settings, accounts, sessions, verifications, rate_limits restart identity cascade`,
+    sql`truncate table users, workspaces, workspace_members, subjects, sections, topics, documents, document_pages, document_topics, user_settings, accounts, sessions, verifications, rate_limits restart identity cascade`,
   );
+}
+
+/** Empties the job queue between tests. */
+export async function resetJobs() {
+  await getDb().execute(sql`delete from pgboss.job`);
+}
+
+/** Jobs waiting in a queue, oldest first. */
+export async function queuedJobs(queue: string) {
+  const result = await getDb().execute(
+    sql`select data from pgboss.job where name = ${queue} and state = 'created' order by created_on`,
+  );
+  return result.rows.map((r) => (r as { data: unknown }).data);
 }
 
 /**

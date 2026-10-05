@@ -4,11 +4,13 @@ An AI-powered university study and knowledge-management platform. This repositor
 holds the application; the product and architecture documents live in the project's
 shared folder.
 
-**Current state: Phase 1 is complete.** Accounts, workspaces, the subject →
-sections → topics knowledge structure, the application shell and settings are
-built and tested. Documents, AI, quizzes, flashcards, past papers and the planner
-are designed but not implemented — see `CURRENT STATUS.md` in the project
-documentation for what exists and what does not.
+**Current state: Phases 1 and 2 are complete.** Accounts, workspaces, the
+subject → sections → topics knowledge structure, the application shell and
+settings, and documents (upload PDFs, Word files, slides, text and images; text
+extraction with OCR for scanned pages; a viewer; linking documents to topics)
+are built and tested. Search, AI, quizzes, flashcards, past papers and the
+planner are designed but not implemented — see `CURRENT STATUS.md` in the
+project documentation for what exists and what does not.
 
 ## Architecture in one paragraph
 
@@ -25,6 +27,9 @@ read or write another's data. The reasoning behind each decision is recorded in
 - Node 22 or newer
 - pnpm 10 (`corepack enable`)
 - Docker, for Postgres (or your own Postgres 17 instance)
+- LibreOffice, for Word and PowerPoint previews (`apt install libreoffice-writer-nogui
+libreoffice-impress-nogui`, or `brew install --cask libreoffice`). Without it those
+  files are still uploaded and their text extracted; they just show as text only.
 
 ## Getting started
 
@@ -34,7 +39,12 @@ cp .env.example .env            # then fill in the values below
 docker compose -f docker/compose.yaml up -d
 pnpm db:migrate
 pnpm dev                        # http://localhost:3000
+pnpm dev:worker                 # in a second terminal: processes uploads
 ```
+
+Uploaded files go to `.data/storage` in development (gitignored). The worker
+reads the text out of each upload; without it running, documents stay at
+"Waiting to be processed".
 
 Create an account at `/sign-up`. In development no email is sent: verification
 and password-reset links are printed to the server log, and email verification is
@@ -56,6 +66,21 @@ configuration, so a typo fails immediately rather than at the first request.
 | `EMAIL_TRANSPORT`                                 | no            | `log` sends no email at all. Production accepts it only when set explicitly; it exists for test environments. |
 | `EMAIL_FROM`                                      | no            | The From address on outgoing email.                                                                           |
 | `LOG_LEVEL`                                       | no            | `info` by default.                                                                                            |
+| `STORAGE_DRIVER`                                  | in production | `local` (files on disk, the default in development) or `s3` (any S3-compatible store, such as Cloudflare R2). |
+| `STORAGE_LOCAL_DIR`                               | no            | Where the local driver keeps files. `.data/storage` by default.                                               |
+| `S3_ENDPOINT` / `S3_BUCKET`                       | with `s3`     | The bucket's endpoint and name.                                                                               |
+| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY`       | with `s3`     | Credentials with read, write and delete on that bucket only.                                                  |
+| `S3_REGION` / `S3_FORCE_PATH_STYLE`               | no            | `auto` and `false` by default, which suit R2. Set path style for MinIO.                                       |
+| `UPLOAD_MAX_MB`                                   | no            | Largest single upload. 50 by default.                                                                         |
+| `STORAGE_QUOTA_MB`                                | no            | Storage per workspace. 2048 by default.                                                                       |
+| `OCR_ENABLED`                                     | no            | `true` by default. Scanned pages are read with Tesseract, which runs offline inside the worker.               |
+| `LIBREOFFICE_PATH`                                | no            | The `soffice` binary, if it is not on the `PATH`.                                                             |
+| `WORKER_CONCURRENCY`                              | no            | Documents processed at once by one worker. 2 by default.                                                      |
+| `WORKER_HEALTH_PORT`                              | no            | When set, the worker answers `GET /health` on this port for the host's health check.                          |
+
+With S3 storage the browser uploads straight to the bucket, so the bucket needs a
+CORS rule allowing `PUT` and `GET` from the application's origin with the
+`content-type` header. On R2 that is set in the bucket's settings.
 
 Secrets belong in `.env` locally and in the host's environment settings in
 production. `.env` is gitignored and must stay that way.
@@ -78,6 +103,10 @@ export TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5433/studyos_tes
 export E2E_DATABASE_URL=postgres://postgres:postgres@localhost:5433/studyos_test
 ```
 
+The end-to-end run starts the worker alongside the server, so uploads are
+processed exactly as in production. Both suites use LibreOffice when it is
+installed; without it, they expect Word and PowerPoint files to show as text only.
+
 `tests/integration/tenant-isolation.test.ts` is the suite to keep green above all
 others: it is the enforcement mechanism for the one property whose failure would
 leak one student's work to another.
@@ -87,7 +116,9 @@ leak one student's work to another.
 | Script                              | What it does                                        |
 | ----------------------------------- | --------------------------------------------------- |
 | `pnpm dev`                          | Development server.                                 |
+| `pnpm dev:worker`                   | Document worker, restarting on changes.             |
 | `pnpm build` / `pnpm start`         | Production build and server.                        |
+| `pnpm worker`                       | Document worker, for production.                    |
 | `pnpm typecheck`                    | Generates Next's route types, then `tsc --noEmit`.  |
 | `pnpm lint`                         | ESLint, including the architectural boundary rules. |
 | `pnpm format` / `pnpm format:check` | Prettier.                                           |
@@ -108,8 +139,9 @@ src/
   server/
     actions/                "use server" entry points, one thin wrapper each
     modules/<name>/         service.ts, repository.ts, schemas.ts, domain/
-    platform/               db, auth, email, observability adapters
+    platform/               db, auth, email, storage, jobs, OCR, observability adapters
     lib/                    env, errors, ids, request context
+  worker/                   the background worker process (pg-boss)
   proxy.ts                  security headers on every response
 tests/
   integration/              services against real Postgres
@@ -124,7 +156,9 @@ lint` rather than waiting to be noticed in review.
 
 ## Deployment
 
-`docker/Dockerfile` builds one image. Phase 1 runs a single process from it
-(`pnpm start`); the background worker will be a second process started from the
-same image. Run `pnpm db:migrate` as a release step before the new processes
-start.
+`docker/Dockerfile` builds one image that runs two processes: the web server
+(`pnpm start`, the default command) and the worker (`pnpm worker`). The image
+includes LibreOffice for the worker. Run `pnpm db:migrate` as a release step
+before the new processes start; it also installs the job queue's tables.
+Production needs `STORAGE_DRIVER=s3`: local storage only works when the web
+server and the worker share a disk.

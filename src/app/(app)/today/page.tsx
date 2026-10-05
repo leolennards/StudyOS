@@ -8,6 +8,7 @@ import { SubjectDot } from "@/features/knowledge/subject-dot";
 import { cn } from "@/lib/utils";
 import { requirePageSession } from "@/server/platform/auth/session";
 import { knowledgeService } from "@/server/modules/knowledge/service";
+import { libraryService } from "@/server/modules/library/service";
 import { settingsService } from "@/server/modules/settings/service";
 
 export const metadata: Metadata = { title: "Today" };
@@ -23,7 +24,11 @@ function greeting(timezone: string) {
 
 export default async function TodayPage() {
   const { user, ctx } = await requirePageSession();
-  const [subjects, settings] = await Promise.all([knowledgeService.listSubjects(ctx), settingsService.get(ctx)]);
+  const [subjects, settings, documentCount] = await Promise.all([
+    knowledgeService.listSubjects(ctx),
+    settingsService.get(ctx),
+    libraryService.countDocuments(ctx),
+  ]);
   const firstName = user.name.split(/\s+/)[0];
   const date = new Intl.DateTimeFormat("en-GB", {
     weekday: "long",
@@ -44,6 +49,11 @@ export default async function TodayPage() {
       label: "Add the topics you need to learn",
       done: subjects.some((s) => s.topicCount > 0),
       href: subjects[0] ? `/subjects/${subjects[0].id}` : "/subjects",
+    },
+    {
+      label: "Upload a lecture, your notes or a past paper",
+      done: documentCount > 0,
+      href: subjects[0] ? `/subjects/${subjects[0].id}/documents` : "/subjects",
     },
   ];
   const remaining = steps.filter((s) => !s.done).length;

@@ -50,6 +50,8 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - name: Install LibreOffice (Word and PowerPoint previews)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libreoffice-writer-nogui libreoffice-impress-nogui
       - run: pnpm install --frozen-lockfile
       - run: pnpm test:integration
 
@@ -77,6 +79,8 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - name: Install LibreOffice (Word and PowerPoint previews)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libreoffice-writer-nogui libreoffice-impress-nogui
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm db:migrate

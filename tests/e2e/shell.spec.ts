@@ -3,11 +3,11 @@ import { createSubject, signUp } from "./helpers";
 
 test("the setup checklist tracks real progress", async ({ page }) => {
   await signUp(page);
-  await expect(page.getByText("0 of 3 done")).toBeVisible();
+  await expect(page.getByText("0 of 4 done")).toBeVisible();
 
   await createSubject(page, "Economics");
   await page.goto("/today");
-  await expect(page.getByText("1 of 3 done")).toBeVisible();
+  await expect(page.getByText("1 of 4 done")).toBeVisible();
   await expect(page.getByRole("link", { name: /Economics/ }).first()).toBeVisible();
 });
 
@@ -33,4 +33,17 @@ test("settings save the user's name and preferences", async ({ page }) => {
   await page.reload();
   await expect(page.getByLabel("Time zone")).toHaveValue("Africa/Johannesburg");
   await expect(page.locator("html")).toHaveClass(/dark/);
+});
+
+test("pages load without Content Security Policy violations", async ({ page }) => {
+  const violations: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error" && message.text().includes("Content Security Policy"))
+      violations.push(message.text());
+  });
+  await signUp(page);
+  await createSubject(page, "Geography");
+  await page.getByRole("navigation", { name: "Subject sections" }).getByRole("link", { name: "Documents" }).click();
+  await expect(page.getByRole("heading", { name: "No documents yet" })).toBeVisible();
+  expect(violations).toEqual([]);
 });

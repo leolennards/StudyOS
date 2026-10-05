@@ -3,54 +3,41 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { Archive, ChevronLeft } from "lucide-react";
 import { PageContainer, PageHeader } from "@/components/shared/page-header";
-import { StructureEditor } from "@/features/knowledge/structure-editor";
 import { SubjectActions } from "@/features/knowledge/subject-actions";
 import { colourClasses } from "@/features/knowledge/subject-colour";
-import type { SectionView, TopicView } from "@/features/knowledge/types";
+import { SubjectTabs } from "@/features/knowledge/subject-tabs";
 import { cn } from "@/lib/utils";
 import { isAppError } from "@/server/lib/errors";
 import { isUuid } from "@/server/lib/ids";
 import { requirePageSession } from "@/server/platform/auth/session";
 import { knowledgeService } from "@/server/modules/knowledge/service";
+import { libraryService } from "@/server/modules/library/service";
 
 async function load(subjectId: string) {
   if (!isUuid(subjectId)) notFound();
   const { ctx } = await requirePageSession();
   try {
-    return await knowledgeService.getSubjectTree(ctx, subjectId);
+    const tree = await knowledgeService.getSubjectTree(ctx, subjectId);
+    const documentCount = await libraryService.countDocuments(ctx, subjectId);
+    return { ...tree, documentCount };
   } catch (error) {
     if (isAppError(error) && error.code === "NOT_FOUND") notFound();
     throw error;
   }
 }
 
-export async function generateMetadata({ params }: PageProps<"/subjects/[subjectId]">): Promise<Metadata> {
+export async function generateMetadata({ params }: LayoutProps<"/subjects/[subjectId]">): Promise<Metadata> {
   const { subjectId } = await params;
   const { subject } = await load(subjectId);
   return { title: subject.name };
 }
 
-type TreeSection = Awaited<ReturnType<typeof knowledgeService.getSubjectTree>>["sections"][number];
-type TreeTopic = Awaited<ReturnType<typeof knowledgeService.getSubjectTree>>["unsectioned"][number];
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
-const toTopic = (t: TreeTopic): TopicView => ({
-  id: t.id,
-  name: t.name,
-  description: t.description,
-  sectionId: t.sectionId,
-});
-const toSection = (s: TreeSection): SectionView => ({
-  id: s.id,
-  label: s.label,
-  title: s.title,
-  parentId: s.parentId,
-  children: s.children.map(toSection),
-  topics: s.topics.map(toTopic),
-});
-
-export default async function SubjectPage({ params }: PageProps<"/subjects/[subjectId]">) {
+/** The subject's header and tabs, shared by its structure and documents pages. */
+export default async function SubjectLayout({ params, children }: LayoutProps<"/subjects/[subjectId]">) {
   const { subjectId } = await params;
-  const { subject, sections, unsectioned, sectionCount, topicCount } = await load(subjectId);
+  const { subject, sectionCount, topicCount, documentCount } = await load(subjectId);
   const c = colourClasses(subject.colour);
   const archived = subject.archivedAt !== null;
 
@@ -78,7 +65,7 @@ export default async function SubjectPage({ params }: PageProps<"/subjects/[subj
             {[subject.code, subject.term].filter(Boolean).join(" · ") || null}
             {(subject.code || subject.term) && <span aria-hidden>·</span>}
             <span>
-              {sectionCount} section{sectionCount === 1 ? "" : "s"}, {topicCount} topic{topicCount === 1 ? "" : "s"}
+              {plural(sectionCount, "section")}, {plural(topicCount, "topic")}, {plural(documentCount, "document")}
             </span>
           </span>
         }
@@ -109,13 +96,9 @@ export default async function SubjectPage({ params }: PageProps<"/subjects/[subj
 
       {subject.description && <p className="mt-6 max-w-prose text-sm whitespace-pre-line">{subject.description}</p>}
 
-      <div className="mt-8">
-        <StructureEditor
-          subjectId={subject.id}
-          sections={sections.map(toSection)}
-          unsectioned={unsectioned.map(toTopic)}
-        />
-      </div>
+      <SubjectTabs subjectId={subject.id} documentCount={documentCount} />
+
+      <div className="mt-6">{children}</div>
     </PageContainer>
   );
 }

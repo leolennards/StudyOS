@@ -1,4 +1,4 @@
-import { and, asc, count, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import type { DbExecutor } from "@/server/platform/db/client";
 import { sections, subjects, topics } from "@/server/platform/db/schema";
 
@@ -147,6 +147,14 @@ export const knowledgeRepository = {
       .from(topics)
       .where(and(eq(topics.workspaceId, ws), eq(topics.subjectId, subjectId)))
       .orderBy(asc(topics.position));
+  },
+
+  listTopicsByIds(db: DbExecutor, ws: string, ids: string[]) {
+    if (ids.length === 0) return Promise.resolve([]);
+    return db
+      .select()
+      .from(topics)
+      .where(and(eq(topics.workspaceId, ws), inArray(topics.id, ids)));
   },
 
   listSiblingTopics(db: DbExecutor, ws: string, subjectId: string, sectionId: string | null) {

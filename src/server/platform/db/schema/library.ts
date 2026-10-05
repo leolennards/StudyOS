@@ -1,0 +1,145 @@
+import { sql } from "drizzle-orm";
+import {
+  bigint,
+  boolean,
+  check,
+  foreignKey,
+  index,
+  integer,
+  jsonb,
+  pgEnum,
+  pgTable,
+  primaryKey,
+  real,
+  smallint,
+  text,
+  timestamp,
+  unique,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
+import { subjects, topics } from "./knowledge";
+
+/**
+ * Library (Architecture §5.4, §9): uploaded documents, the text extracted
+ * from each page, and the topics a document covers. Composite foreign keys
+ * on (workspace_id, …) keep a document, its pages and its topic links inside
+ * one workspace at the database level.
+ */
+export const documentKind = pgEnum("document_kind", [
+  "lecture",
+  "notes",
+  "textbook",
+  "past_paper",
+  "mark_scheme",
+  "other",
+]);
+
+/** What the file actually is, confirmed from its bytes by the worker. */
+export const documentFormat = pgEnum("document_format", ["pdf", "docx", "pptx", "txt", "md", "png", "jpeg", "webp"]);
+
+/** pending_upload → uploaded → processing → ready | failed (Architecture §9, status machine). */
+export const documentStatus = pgEnum("document_status", [
+  "pending_upload",
+  "uploaded",
+  "processing",
+  "ready",
+  "failed",
+]);
+
+/** How the viewer shows the original: as a PDF (native or converted), an image, or as text. */
+export const documentPreview = pgEnum("document_preview", ["pdf", "image", "text"]);
+
+export const documents = pgTable(
+  "documents",
+  {
+    id: uuid("id").primaryKey(),
+    workspaceId: uuid("workspace_id").notNull(),
+    subjectId: uuid("subject_id").notNull(),
+    title: text("title").notNull(),
+    originalFilename: text("original_filename").notNull(),
+    kind: documentKind("kind").notNull(),
+    format: documentFormat("format").notNull(),
+    sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
+    sha256: text("sha256").notNull(),
+    status: documentStatus("status").notNull().default("pending_upload"),
+    /** The stage currently running while status is `processing`. */
+    stage: text("stage"),
+    progress: smallint("progress").notNull().default(0),
+    /** A message the student can read when status is `failed`. */
+    errorMessage: text("error_message"),
+    pageCount: integer("page_count"),
+    ocrPageCount: integer("ocr_page_count").notNull().default(0),
+    preview: documentPreview("preview"),
+    storageKey: text("storage_key").notNull(),
+    previewKey: text("preview_key"),
+    uploadedAt: timestamp("uploaded_at", { withTimezone: true }),
+    processedAt: timestamp("processed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("documents_workspace_id_id_key").on(t.workspaceId, t.id),
+    foreignKey({
+      name: "documents_subject_fk",
+      columns: [t.workspaceId, t.subjectId],
+      foreignColumns: [subjects.workspaceId, subjects.id],
+    }).onDelete("cascade"),
+    // The same file is stored once per workspace (Architecture §5.4).
+    uniqueIndex("documents_workspace_sha256_key").on(t.workspaceId, t.sha256),
+    index("documents_subject_idx").on(t.workspaceId, t.subjectId, t.createdAt),
+    check("documents_progress_range", sql`${t.progress} between 0 and 100`),
+  ],
+);
+
+/** One row per page (PDF page, slide, or the single page of a text file or image). */
+export const documentPages = pgTable(
+  "document_pages",
+  {
+    workspaceId: uuid("workspace_id").notNull(),
+    documentId: uuid("document_id").notNull(),
+    pageNumber: integer("page_number").notNull(),
+    text: text("text").notNull(),
+    /** Headings, paragraphs and list items where the format records them. */
+    blocks:
+      jsonb("blocks").$type<{ type: "heading" | "paragraph" | "list_item" | "note"; text: string; level?: number }[]>(),
+    charCount: integer("char_count").notNull(),
+    ocrUsed: boolean("ocr_used").notNull().default(false),
+    ocrConfidence: real("ocr_confidence"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.documentId, t.pageNumber] }),
+    foreignKey({
+      name: "document_pages_document_fk",
+      columns: [t.workspaceId, t.documentId],
+      foreignColumns: [documents.workspaceId, documents.id],
+    }).onDelete("cascade"),
+    check("document_pages_number_positive", sql`${t.pageNumber} > 0`),
+  ],
+);
+
+/** The topics a document covers, chosen by the student (Architecture §5.3, decision 2). */
+export const documentTopics = pgTable(
+  "document_topics",
+  {
+    workspaceId: uuid("workspace_id").notNull(),
+    documentId: uuid("document_id").notNull(),
+    topicId: uuid("topic_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.documentId, t.topicId] }),
+    foreignKey({
+      name: "document_topics_document_fk",
+      columns: [t.workspaceId, t.documentId],
+      foreignColumns: [documents.workspaceId, documents.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "document_topics_topic_fk",
+      columns: [t.workspaceId, t.topicId],
+      foreignColumns: [topics.workspaceId, topics.id],
+    }).onDelete("cascade"),
+    index("document_topics_topic_idx").on(t.workspaceId, t.topicId),
+  ],
+);
