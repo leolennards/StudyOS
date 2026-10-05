@@ -4,6 +4,8 @@ import { isAppError } from "@/server/lib/errors";
 import { knowledgeService } from "@/server/modules/knowledge/service";
 import { settingsService } from "@/server/modules/settings/service";
 import { libraryService } from "@/server/modules/library/service";
+import { notesService } from "@/server/modules/notes/service";
+import { searchService } from "@/server/modules/search/service";
 import { stopBoss } from "@/server/platform/jobs";
 import { closeOcr } from "@/server/platform/ocr";
 import { getStorage } from "@/server/platform/storage";
@@ -255,6 +257,103 @@ describe("documents and their files are scoped to the workspace", () => {
     const bobDoc = await uploadFixture(bob, bobSubject.id, "reading.txt");
     expect(await denied(() => libraryService.setTopics(bob, { id: bobDoc, topicIds: [aliceData.topicId] }))).toBe(
       "VALIDATION",
+    );
+  });
+});
+
+describe("notes are scoped to the workspace", () => {
+  let aliceNote: string;
+  const content = {
+    type: "doc",
+    content: [{ type: "paragraph", content: [{ type: "text", text: "Alice's secret mnemonic" }] }],
+  };
+
+  beforeEach(async () => {
+    ({ id: aliceNote } = await notesService.createNote(alice, {
+      subjectId: aliceData.subjectId,
+      sectionId: aliceData.sectionId,
+      topicIds: [aliceData.topicId],
+    }));
+    await notesService.saveNote(alice, { id: aliceNote, revision: 1, title: "Alice's note", content });
+  });
+
+  it("Bob cannot list, read or count Alice's notes or her trash", async () => {
+    expect(await denied(() => notesService.listNotes(bob, aliceData.subjectId))).toBe("NOT_FOUND");
+    expect(await denied(() => notesService.listTrash(bob, aliceData.subjectId))).toBe("NOT_FOUND");
+    expect(await denied(() => notesService.getNote(bob, aliceNote))).toBe("NOT_FOUND");
+    expect(await notesService.countNotes(bob)).toBe(0);
+  });
+
+  it("Bob cannot create a note in Alice's subject", async () => {
+    expect(await denied(() => notesService.createNote(bob, { subjectId: aliceData.subjectId }))).toBe("NOT_FOUND");
+  });
+
+  it("Bob cannot save, move, re-topic, trash, restore or delete Alice's note", async () => {
+    expect(
+      await denied(() => notesService.saveNote(bob, { id: aliceNote, revision: 2, title: "Hacked", content })),
+    ).toBe("NOT_FOUND");
+    expect(await denied(() => notesService.moveNote(bob, { id: aliceNote, sectionId: null }))).toBe("NOT_FOUND");
+    expect(await denied(() => notesService.setTopics(bob, { id: aliceNote, topicIds: [] }))).toBe("NOT_FOUND");
+    expect(await denied(() => notesService.trashNote(bob, { id: aliceNote }))).toBe("NOT_FOUND");
+    expect(await denied(() => notesService.restoreNote(bob, { id: aliceNote }))).toBe("NOT_FOUND");
+    expect(await denied(() => notesService.deleteNote(bob, { id: aliceNote }))).toBe("NOT_FOUND");
+    expect(await denied(() => notesService.emptyTrash(bob, { subjectId: aliceData.subjectId }))).toBe("NOT_FOUND");
+    const note = await notesService.getNote(alice, aliceNote);
+    expect(note).toMatchObject({
+      title: "Alice's note",
+      revision: 2,
+      sectionId: aliceData.sectionId,
+      topicIds: [aliceData.topicId],
+      deletedAt: null,
+    });
+  });
+
+  it("Bob cannot file his own note under Alice's section or topic", async () => {
+    const bobSubject = await knowledgeService.createSubject(bob, {
+      name: "Bob's Physics",
+      code: null,
+      term: null,
+      description: null,
+      colour: "sky",
+    });
+    expect(
+      await denied(() => notesService.createNote(bob, { subjectId: bobSubject.id, sectionId: aliceData.sectionId })),
+    ).toBe("VALIDATION");
+    const { id } = await notesService.createNote(bob, { subjectId: bobSubject.id });
+    expect(await denied(() => notesService.moveNote(bob, { id, sectionId: aliceData.sectionId }))).toBe("VALIDATION");
+    expect(await denied(() => notesService.setTopics(bob, { id, topicIds: [aliceData.topicId] }))).toBe("VALIDATION");
+  });
+});
+
+describe("search is scoped to the workspace", () => {
+  it("Bob's searches never return Alice's subjects, topics, notes or documents", async () => {
+    const { id } = await notesService.createNote(alice, { subjectId: aliceData.subjectId });
+    await notesService.saveNote(alice, {
+      id,
+      revision: 1,
+      title: "Alice's chemistry note",
+      content: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Mitochondria" }] }] },
+    });
+    await uploadFixture(alice, aliceData.subjectId, "lecture.pdf");
+
+    for (const q of ["alice", "chemistry", "mitochondria", "topic", "lecture", "cell"]) {
+      expect(await searchService.search(bob, { q })).toEqual({
+        query: q,
+        subjects: [],
+        topics: [],
+        notes: [],
+        documents: [],
+      });
+    }
+    // The same searches do find Alice's data for Alice.
+    const mine = await searchService.search(alice, { q: "mitochondria" });
+    expect(mine.notes).toHaveLength(1);
+    expect(mine.documents).toHaveLength(1);
+  });
+
+  it("Bob cannot search inside Alice's subject", async () => {
+    expect(await denied(() => searchService.search(bob, { q: "alice", subjectId: aliceData.subjectId }))).toBe(
+      "NOT_FOUND",
     );
   });
 });

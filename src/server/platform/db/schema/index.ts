@@ -3,3 +3,4 @@ export * from "./workspaces";
 export * from "./settings";
 export * from "./knowledge";
 export * from "./library";
+export * from "./notes";

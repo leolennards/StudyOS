@@ -13,11 +13,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ConfirmDialog, type ConfirmState } from "@/features/knowledge/confirm-dialog";
 import { useAction } from "@/features/knowledge/use-action";
-import { deleteDocument, getDocumentDownloadUrl, retryDocument } from "@/server/actions/library";
+import { TopicsDialog, type TopicsDialogState } from "@/features/knowledge/topics-dialog";
+import { deleteDocument, getDocumentDownloadUrl, retryDocument, setDocumentTopics } from "@/server/actions/library";
 import type { DocumentKind } from "@/server/modules/library/domain/kind";
 import type { DocumentStatus } from "@/server/modules/library/domain/status";
 import { DocumentDetailsDialog, type DocumentDetails } from "./document-details-dialog";
-import { DocumentTopicsDialog, type TopicsDialogState } from "./document-topics-dialog";
 import type { TopicGroup } from "./types";
 
 export type ActionsDocument = {
@@ -123,10 +123,12 @@ export function DocumentActions({
       </DropdownMenu>
 
       <DocumentDetailsDialog doc={details} onClose={() => setDetails(null)} />
-      <DocumentTopicsDialog
+      <TopicsDialog
         subjectId={doc.subjectId}
         groups={topicGroups}
         state={topics}
+        description="Link the topics this document covers, so you can find it from each one."
+        save={setDocumentTopics}
         onClose={() => setTopics(null)}
       />
       <ConfirmDialog state={confirm} onClose={() => setConfirm(null)} />

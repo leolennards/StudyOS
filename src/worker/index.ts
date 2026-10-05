@@ -11,6 +11,7 @@ import { getBoss, type JobPayloads, QUEUES, stopBoss } from "@/server/platform/j
 import { closeOcr } from "@/server/platform/ocr";
 import { logger } from "@/server/platform/observability/logger";
 import { libraryJobs } from "@/server/modules/library/jobs";
+import { notesService } from "@/server/modules/notes/service";
 
 async function main() {
   const e = env();
@@ -26,6 +27,12 @@ async function main() {
   );
   await boss.work(QUEUES.storageReconcile, async () => libraryJobs.reconcileStorage());
   await boss.schedule(QUEUES.storageReconcile, "17 * * * *", {});
+  // Notes that have been in the trash for 30 days are deleted for good.
+  await boss.work(QUEUES.notesPurgeTrash, async () => {
+    const deleted = await notesService.systemPurgeTrash();
+    logger.info({ deleted }, "notes trash purged");
+  });
+  await boss.schedule(QUEUES.notesPurgeTrash, "41 * * * *", {});
 
   const soffice = libreOfficePath(e.LIBREOFFICE_PATH);
   logger.info(

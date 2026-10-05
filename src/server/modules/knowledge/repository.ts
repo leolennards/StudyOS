@@ -193,4 +193,58 @@ export const knowledgeRepository = {
       .where(and(eq(topics.workspaceId, ws), sql`${topics.sectionId} in ${sectionIds}`));
     return row?.n ?? 0;
   },
+
+  // ── search ────────────────────────────────────────────────────────────────
+  /**
+   * Subjects whose name or code contains the typed text or closely matches
+   * it (typo-tolerant, through pg_trgm), names starting with it first.
+   */
+  searchSubjects(db: DbExecutor, ws: string, q: { text: string; like: string; prefix: string; limit: number }) {
+    const score = sql`(case when ${subjects.name} ilike ${q.prefix} then 1 else 0 end) + word_similarity(${q.text}, ${subjects.name})`;
+    return db
+      .select({
+        id: subjects.id,
+        name: subjects.name,
+        code: subjects.code,
+        colour: subjects.colour,
+        archivedAt: subjects.archivedAt,
+      })
+      .from(subjects)
+      .where(
+        and(
+          eq(subjects.workspaceId, ws),
+          sql`(${subjects.name} ilike ${q.like} or ${subjects.code} ilike ${q.like} or word_similarity(${q.text}, ${subjects.name}) >= 0.5)`,
+        ),
+      )
+      .orderBy(sql`${score} desc`, asc(subjects.name))
+      .limit(q.limit);
+  },
+
+  /** Topics matched the same way, optionally within one subject. */
+  searchTopics(
+    db: DbExecutor,
+    ws: string,
+    q: { text: string; like: string; prefix: string; subjectId?: string; limit: number },
+  ) {
+    const score = sql`(case when ${topics.name} ilike ${q.prefix} then 1 else 0 end) + word_similarity(${q.text}, ${topics.name})`;
+    return db
+      .select({
+        id: topics.id,
+        name: topics.name,
+        subjectId: topics.subjectId,
+        subjectName: subjects.name,
+        colour: subjects.colour,
+      })
+      .from(topics)
+      .innerJoin(subjects, and(eq(subjects.workspaceId, topics.workspaceId), eq(subjects.id, topics.subjectId)))
+      .where(
+        and(
+          eq(topics.workspaceId, ws),
+          q.subjectId ? eq(topics.subjectId, q.subjectId) : undefined,
+          sql`(${topics.name} ilike ${q.like} or word_similarity(${q.text}, ${topics.name}) >= 0.5)`,
+        ),
+      )
+      .orderBy(sql`${score} desc`, asc(topics.name))
+      .limit(q.limit);
+  },
 };

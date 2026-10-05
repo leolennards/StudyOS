@@ -5,11 +5,25 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 /** Tabs across a subject's pages, styled like the subject list's filter. */
-export function SubjectTabs({ subjectId, documentCount }: { subjectId: string; documentCount: number }) {
+export function SubjectTabs({
+  subjectId,
+  noteCount,
+  documentCount,
+}: {
+  subjectId: string;
+  noteCount: number;
+  documentCount: number;
+}) {
   const pathname = usePathname();
   const base = `/subjects/${subjectId}`;
   const tabs = [
     { href: base, label: "Structure", current: pathname === base },
+    {
+      href: `${base}/notes`,
+      label: "Notes",
+      count: noteCount,
+      current: pathname.startsWith(`${base}/notes`),
+    },
     {
       href: `${base}/documents`,
       label: "Documents",

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import {
   ChevronsUpDown,
   Library,
@@ -11,6 +11,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
+  Search,
   Settings,
   Sunrise,
 } from "lucide-react";
@@ -26,6 +27,7 @@ import {
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SubjectDot } from "@/features/knowledge/subject-dot";
+import { CommandPalette, useCommandPaletteShortcut } from "@/features/search/command-palette";
 import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 import { Logo } from "./logo";
@@ -59,6 +61,12 @@ export function AppShell({
 }) {
   const [collapsed, setCollapsed] = useState(initialCollapsed);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  useCommandPaletteShortcut(setSearchOpen);
+  const openSearch = () => {
+    setMobileOpen(false);
+    setSearchOpen(true);
+  };
 
   function toggleCollapsed() {
     const next = !collapsed;
@@ -76,7 +84,13 @@ export function AppShell({
           collapsed ? "w-14" : "w-64",
         )}
       >
-        <SidebarContents user={user} subjects={subjects} collapsed={collapsed} onToggle={toggleCollapsed} />
+        <SidebarContents
+          user={user}
+          subjects={subjects}
+          collapsed={collapsed}
+          onToggle={toggleCollapsed}
+          onSearch={openSearch}
+        />
       </aside>
 
       {/* Mobile drawer */}
@@ -85,7 +99,13 @@ export function AppShell({
           <SheetTitle className="sr-only">Navigation</SheetTitle>
           <SheetDescription className="sr-only">Main navigation</SheetDescription>
           {/* Any link inside closes the drawer, so the page is visible after navigating. */}
-          <SidebarContents user={user} subjects={subjects} collapsed={false} onNavigate={() => setMobileOpen(false)} />
+          <SidebarContents
+            user={user}
+            subjects={subjects}
+            collapsed={false}
+            onNavigate={() => setMobileOpen(false)}
+            onSearch={openSearch}
+          />
         </SheetContent>
       </Sheet>
 
@@ -97,11 +117,15 @@ export function AppShell({
           <Link href="/today" aria-label="StudyOS home">
             <Logo />
           </Link>
+          <Button variant="ghost" size="icon" className="ml-auto" onClick={openSearch} aria-label="Search">
+            <Search />
+          </Button>
         </header>
         <main id="main" className="flex-1">
           {children}
         </main>
       </div>
+      <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} subjects={subjects} />
     </div>
   );
 }
@@ -112,12 +136,14 @@ function SidebarContents({
   collapsed,
   onToggle,
   onNavigate,
+  onSearch,
 }: {
   user: ShellUser;
   subjects: ShellSubject[];
   collapsed: boolean;
   onToggle?: () => void;
   onNavigate?: () => void;
+  onSearch: () => void;
 }) {
   const pathname = usePathname();
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
@@ -148,6 +174,10 @@ function SidebarContents({
             {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
           </Button>
         )}
+      </div>
+
+      <div className={cn("px-2 pt-1", collapsed && "flex justify-center")}>
+        <SearchButton collapsed={collapsed} onClick={onSearch} />
       </div>
 
       <nav className="flex-1 overflow-y-auto px-2 py-2" aria-label="Primary">
@@ -216,6 +246,55 @@ function SidebarContents({
         <UserMenu user={user} collapsed={collapsed} />
       </div>
     </div>
+  );
+}
+
+function SearchButton({ collapsed, onClick }: { collapsed: boolean; onClick: () => void }) {
+  if (collapsed) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onClick}
+            aria-label="Search"
+            className="text-muted-foreground"
+          >
+            <Search />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="right">Search</TooltipContent>
+      </Tooltip>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="border-sidebar-border bg-background/60 text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 flex h-9 w-full items-center gap-2 rounded-md border px-2 text-sm outline-none focus-visible:ring-[3px]"
+    >
+      <Search className="size-4" aria-hidden />
+      <span className="flex-1 text-left">Search</span>
+      <ShortcutHint />
+    </button>
+  );
+}
+
+/** "⌘K" on Apple devices, "Ctrl K" elsewhere; shown once mounted, as the server can't know which. */
+const noSubscribe = () => () => {};
+
+function ShortcutHint() {
+  const mac = useSyncExternalStore(
+    noSubscribe,
+    () => /Mac|iPhone|iPad/.test(navigator.platform),
+    () => null,
+  );
+  if (mac === null) return null;
+  return (
+    <kbd aria-hidden className="bg-muted rounded border px-1.5 font-sans text-[0.7rem]">
+      {mac ? "⌘K" : "Ctrl K"}
+    </kbd>
   );
 }
 
