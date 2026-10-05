@@ -1,0 +1,13 @@
+# Kept out of the image build context. .data holds files uploaded in
+# development, which must never end up inside an image.
+.git
+.env
+.env.*
+!.env.example
+node_modules
+.next
+.data
+public/pdfjs
+test-results
+playwright-report
+coverage

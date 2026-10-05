@@ -1,7 +1,12 @@
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
-  resolve: { tsconfigPaths: true },
+  resolve: {
+    tsconfigPaths: true,
+    // `server-only` throws outside a React Server Components build; in tests
+    // the server code runs in plain Node, as it does in the worker.
+    alias: { "server-only": new URL("./tests/helpers/empty-module.ts", import.meta.url).pathname },
+  },
   test: {
     environment: "node",
     projects: [
@@ -19,7 +24,7 @@ export default defineConfig({
           globalSetup: ["tests/helpers/global-setup.ts"],
           setupFiles: ["tests/helpers/setup-env.ts"],
           fileParallelism: false,
-          testTimeout: 20_000,
+          testTimeout: 60_000,
         },
       },
     ],

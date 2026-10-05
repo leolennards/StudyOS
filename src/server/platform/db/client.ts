@@ -23,6 +23,32 @@ export function getDb(): Database {
   return db;
 }
 
+/** Runs raw SQL on the connection a transaction holds; what the job queue needs to enqueue inside it. */
+export type SqlExecutor = { executeSql(text: string, values?: unknown[]): Promise<{ rows: unknown[] }> };
+
+/**
+ * A transaction that both Drizzle and the job queue can write to, so a job
+ * is only ever enqueued together with the rows it refers to (Architecture
+ * §33, transactional enqueue). Either everything commits or nothing does.
+ */
+export async function withTransaction<T>(fn: (tx: Database, sql: SqlExecutor) => Promise<T>): Promise<T> {
+  getDb();
+  const client = await globalForDb.studyosPool!.connect();
+  try {
+    await client.query("begin");
+    const tx = drizzle(client, { schema }) as unknown as Database;
+    const executor: SqlExecutor = { executeSql: (text, values) => client.query(text, values as unknown[]) };
+    const result = await fn(tx, executor);
+    await client.query("commit");
+    return result;
+  } catch (error) {
+    await client.query("rollback").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function closeDb() {
   await globalForDb.studyosPool?.end();
   globalForDb.studyosPool = undefined;

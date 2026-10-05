@@ -1,9 +1,9 @@
 # One image, built in three stages so the runtime layer carries no build tooling.
 #
-# Phase 1 runs a single process from this image: the Next.js server. The
-# background worker designed in the architecture proposal (pg-boss) will be a
-# second process started from this same image with a different command, which
-# is why the runtime stage keeps the full node_modules rather than only the
+# Two processes run from this image: the Next.js server (the default command)
+# and the background worker that processes uploaded documents, started with
+# `pnpm worker`. The worker runs TypeScript from src through tsx, which is why
+# the runtime stage keeps the full node_modules and src rather than only the
 # standalone server output.
 
 FROM node:22-slim AS deps
@@ -25,6 +25,11 @@ FROM node:22-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
+# LibreOffice (writer and impress only, no GUI) turns Word and PowerPoint files
+# into PDFs for the viewer. The worker is the only process that calls it.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends libreoffice-writer-nogui libreoffice-impress-nogui fonts-dejavu-core \
+  && rm -rf /var/lib/apt/lists/*
 RUN corepack enable \
   && groupadd --system --gid 1001 studyos \
   && useradd --system --uid 1001 --gid studyos studyos

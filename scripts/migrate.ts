@@ -6,6 +6,7 @@ import "dotenv/config";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
+import { PgBoss } from "pg-boss";
 
 async function main() {
   const url = process.env.DATABASE_URL;
@@ -13,6 +14,17 @@ async function main() {
   const pool = new Pool({ connectionString: url, max: 1 });
   try {
     await migrate(drizzle(pool), { migrationsFolder: "src/server/platform/db/migrations" });
+    // The job queue keeps its tables in its own `pgboss` schema and upgrades
+    // them itself; doing it here keeps DDL out of the running processes.
+    const boss = new PgBoss({
+      connectionString: url,
+      max: 1,
+      supervise: false,
+      schedule: false,
+      registerInstance: false,
+    });
+    await boss.start();
+    await boss.stop({ graceful: false });
     console.log("Migrations applied.");
   } finally {
     await pool.end();

@@ -9,7 +9,22 @@ const PREINSTALLED_CHROMIUM = "/opt/pw-browsers/chromium";
 const launchOptions = existsSync(PREINSTALLED_CHROMIUM) ? { executablePath: PREINSTALLED_CHROMIUM } : {};
 
 const PORT = 3100;
+const WORKER_HEALTH_PORT = 3101;
 const baseURL = `http://127.0.0.1:${PORT}`;
+
+const serverEnv = {
+  DATABASE_URL: process.env.E2E_DATABASE_URL ?? "",
+  BETTER_AUTH_SECRET: "e2e-secret-at-least-32-characters-long",
+  BETTER_AUTH_URL: baseURL,
+  // No email provider in tests, so nothing is sent and sign-up needs no
+  // verification link (see src/server/lib/env.ts).
+  EMAIL_TRANSPORT: "log",
+  AUTH_RATE_LIMIT: "off",
+  LOG_LEVEL: "warn",
+  // The app and the worker share one local folder for uploaded files.
+  STORAGE_DRIVER: "local",
+  STORAGE_LOCAL_DIR: ".data/e2e-storage",
+};
 
 /**
  * End-to-end tests run against a real production build with a real database
@@ -28,21 +43,22 @@ export default defineConfig({
     { name: "desktop", use: { ...devices["Desktop Chrome"], launchOptions } },
     { name: "mobile", use: { ...devices["Pixel 7"], launchOptions } },
   ],
-  webServer: {
-    command: `pnpm build && pnpm start --port ${PORT}`,
-    url: `${baseURL}/api/health`,
-    reuseExistingServer: !process.env.CI,
-    timeout: 240_000,
-    env: {
-      DATABASE_URL: process.env.E2E_DATABASE_URL ?? "",
-      BETTER_AUTH_SECRET: "e2e-secret-at-least-32-characters-long",
-      BETTER_AUTH_URL: baseURL,
-      // No email provider in tests, so nothing is sent and sign-up needs no
-      // verification link (see src/server/lib/env.ts).
-      EMAIL_TRANSPORT: "log",
-      AUTH_RATE_LIMIT: "off",
-      LOG_LEVEL: "warn",
-      PORT: String(PORT),
+  webServer: [
+    {
+      // E2E_SKIP_BUILD=1 reuses the last build when iterating on the tests locally.
+      command: process.env.E2E_SKIP_BUILD ? `pnpm start --port ${PORT}` : `pnpm build && pnpm start --port ${PORT}`,
+      url: `${baseURL}/api/health`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 240_000,
+      env: { ...serverEnv, PORT: String(PORT) },
     },
-  },
+    {
+      // Uploaded documents are processed by the worker, as in production.
+      command: "pnpm worker",
+      url: `http://127.0.0.1:${WORKER_HEALTH_PORT}/health`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 60_000,
+      env: { ...serverEnv, WORKER_HEALTH_PORT: String(WORKER_HEALTH_PORT) },
+    },
+  ],
 });

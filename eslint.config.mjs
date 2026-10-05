@@ -70,7 +70,15 @@ const eslintConfig = defineConfig([
       "Domain logic must stay pure: no database, no services, no I/O.",
     ),
   },
-  globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts", "src/server/platform/db/migrations/**"]),
+  globalIgnores([
+    "public/pdfjs/**",
+    ".data/**",
+    ".next/**",
+    "out/**",
+    "build/**",
+    "next-env.d.ts",
+    "src/server/platform/db/migrations/**",
+  ]),
 ]);
 
 export default eslintConfig;

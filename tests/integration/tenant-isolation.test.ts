@@ -3,7 +3,12 @@ import { closeDb } from "@/server/platform/db/client";
 import { isAppError } from "@/server/lib/errors";
 import { knowledgeService } from "@/server/modules/knowledge/service";
 import { settingsService } from "@/server/modules/settings/service";
+import { libraryService } from "@/server/modules/library/service";
+import { stopBoss } from "@/server/platform/jobs";
+import { closeOcr } from "@/server/platform/ocr";
+import { getStorage } from "@/server/platform/storage";
 import { createTestUser, resetDatabase } from "../helpers/db";
+import { fixture, sha256, uploadFixture } from "../helpers/documents";
 
 /**
  * The most important test in StudyOS: user B must never reach user A's data,
@@ -42,6 +47,8 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
+  await closeOcr();
+  await stopBoss();
   await closeDb();
 });
 
@@ -172,5 +179,82 @@ describe("settings are per user", () => {
     await settingsService.update(alice, { theme: "dark", timezone: "Africa/Johannesburg" });
     expect(await settingsService.get(bob)).toEqual({ theme: "system", timezone: "UTC" });
     expect(await settingsService.get(alice)).toEqual({ theme: "dark", timezone: "Africa/Johannesburg" });
+  });
+});
+
+describe("documents and their files are scoped to the workspace", () => {
+  let aliceDoc: string;
+
+  beforeEach(async () => {
+    aliceDoc = await uploadFixture(alice, aliceData.subjectId, "lecture.pdf");
+    await libraryService.setTopics(alice, { id: aliceDoc, topicIds: [aliceData.topicId] });
+  });
+
+  it("Bob cannot list, read, or get the text of Alice's documents", async () => {
+    expect(await denied(() => libraryService.listDocuments(bob, aliceData.subjectId))).toBe("NOT_FOUND");
+    expect(await denied(() => libraryService.getDocument(bob, aliceDoc))).toBe("NOT_FOUND");
+    expect(await denied(() => libraryService.getPages(bob, aliceDoc))).toBe("NOT_FOUND");
+    expect(await libraryService.getStatuses(bob, [aliceDoc])).toEqual([]);
+    expect(await libraryService.countDocuments(bob)).toBe(0);
+    expect((await libraryService.storageUsage(bob)).usedBytes).toBe(0);
+  });
+
+  it("Bob cannot get a URL to view or download Alice's file", async () => {
+    expect(await denied(() => libraryService.getViewUrl(bob, aliceDoc))).toBe("NOT_FOUND");
+    expect(await denied(() => libraryService.getDownloadUrl(bob, aliceDoc))).toBe("NOT_FOUND");
+  });
+
+  it("Bob cannot upload into Alice's subject", async () => {
+    const data = await fixture("reading.txt");
+    expect(
+      await denied(() =>
+        libraryService.createUpload(bob, {
+          subjectId: aliceData.subjectId,
+          filename: "intruder.txt",
+          size: data.length,
+          sha256: sha256(data),
+        }),
+      ),
+    ).toBe("NOT_FOUND");
+  });
+
+  it("uploading the same file as Alice reveals nothing about hers", async () => {
+    const bobSubject = await knowledgeService.createSubject(bob, {
+      name: "Bob's Biology",
+      code: null,
+      term: null,
+      description: null,
+      colour: "sky",
+    });
+    const bobDoc = await uploadFixture(bob, bobSubject.id, "lecture.pdf");
+    expect(bobDoc).not.toBe(aliceDoc);
+    expect((await libraryService.getDocument(bob, bobDoc)).status).toBe("ready");
+    expect(await getStorage().list(`ws/${bob.workspaceId}/`)).toEqual([
+      `ws/${bob.workspaceId}/docs/${bobDoc}/original`,
+    ]);
+  });
+
+  it("Bob cannot confirm, retry, rename, re-topic or delete Alice's document", async () => {
+    expect(await denied(() => libraryService.confirmUpload(bob, { id: aliceDoc }))).toBe("NOT_FOUND");
+    expect(await denied(() => libraryService.retryProcessing(bob, { id: aliceDoc }))).toBe("NOT_FOUND");
+    expect(await denied(() => libraryService.updateDocument(bob, { id: aliceDoc, title: "Hacked" }))).toBe("NOT_FOUND");
+    expect(await denied(() => libraryService.setTopics(bob, { id: aliceDoc, topicIds: [] }))).toBe("NOT_FOUND");
+    expect(await denied(() => libraryService.deleteDocument(bob, { id: aliceDoc }))).toBe("NOT_FOUND");
+    const doc = await libraryService.getDocument(alice, aliceDoc);
+    expect(doc).toMatchObject({ title: "lecture", topicIds: [aliceData.topicId], status: "ready" });
+  });
+
+  it("Bob cannot link Alice's topic to his own document", async () => {
+    const bobSubject = await knowledgeService.createSubject(bob, {
+      name: "Bob's Biology",
+      code: null,
+      term: null,
+      description: null,
+      colour: "sky",
+    });
+    const bobDoc = await uploadFixture(bob, bobSubject.id, "reading.txt");
+    expect(await denied(() => libraryService.setTopics(bob, { id: bobDoc, topicIds: [aliceData.topicId] }))).toBe(
+      "VALIDATION",
+    );
   });
 });

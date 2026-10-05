@@ -83,6 +83,7 @@ export const topics = pgTable(
       columns: [t.workspaceId, t.subjectId],
       foreignColumns: [subjects.workspaceId, subjects.id],
     }).onDelete("cascade"),
+    unique("topics_workspace_id_id_key").on(t.workspaceId, t.id),
     index("topics_subject_idx").on(t.workspaceId, t.subjectId, t.sectionId, t.position),
   ],
 );

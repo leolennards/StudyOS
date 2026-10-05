@@ -69,6 +69,17 @@ export const knowledgeService = {
     return { subject, sections: roots, unsectioned, sectionCount: sectionRows.length, topicCount: topicRows.length };
   },
 
+  /** A subject's topics in display order, for pickers in other modules. */
+  async listTopics(ctx: RequestContext, subjectId: string) {
+    await requireSubject(ctx, subjectId);
+    return repo.listTopicsForSubject(getDb(), ctx.workspaceId, subjectId);
+  },
+
+  /** The topics with these ids that exist in the caller's workspace. Unknown ids are left out. */
+  async findTopics(ctx: RequestContext, ids: string[]) {
+    return repo.listTopicsByIds(getDb(), ctx.workspaceId, ids);
+  },
+
   async countActiveSubjects(ctx: RequestContext) {
     return repo.countSubjects(getDb(), ctx.workspaceId);
   },
