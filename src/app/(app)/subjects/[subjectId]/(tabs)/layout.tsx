@@ -11,6 +11,7 @@ import { isAppError } from "@/server/lib/errors";
 import { isUuid } from "@/server/lib/ids";
 import { requirePageSession } from "@/server/platform/auth/session";
 import { knowledgeService } from "@/server/modules/knowledge/service";
+import { flashcardsService } from "@/server/modules/flashcards/service";
 import { libraryService } from "@/server/modules/library/service";
 import { notesService } from "@/server/modules/notes/service";
 
@@ -19,11 +20,12 @@ async function load(subjectId: string) {
   const { ctx } = await requirePageSession();
   try {
     const tree = await knowledgeService.getSubjectTree(ctx, subjectId);
-    const [documentCount, noteCount] = await Promise.all([
+    const [documentCount, noteCount, cardCount] = await Promise.all([
       libraryService.countDocuments(ctx, subjectId),
       notesService.countNotes(ctx, subjectId),
+      flashcardsService.countCards(ctx, subjectId),
     ]);
-    return { ...tree, documentCount, noteCount };
+    return { ...tree, documentCount, noteCount, cardCount };
   } catch (error) {
     if (isAppError(error) && error.code === "NOT_FOUND") notFound();
     throw error;
@@ -38,10 +40,10 @@ export async function generateMetadata({ params }: LayoutProps<"/subjects/[subje
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
-/** The subject's header and tabs, shared by its structure, notes and documents pages. */
+/** The subject's header and tabs, shared by its structure, notes, documents and flashcards pages. */
 export default async function SubjectLayout({ params, children }: LayoutProps<"/subjects/[subjectId]">) {
   const { subjectId } = await params;
-  const { subject, sectionCount, topicCount, documentCount, noteCount } = await load(subjectId);
+  const { subject, sectionCount, topicCount, documentCount, noteCount, cardCount } = await load(subjectId);
   const c = colourClasses(subject.colour);
   const archived = subject.archivedAt !== null;
 
@@ -70,7 +72,7 @@ export default async function SubjectLayout({ params, children }: LayoutProps<"/
             {(subject.code || subject.term) && <span aria-hidden>·</span>}
             <span>
               {plural(sectionCount, "section")}, {plural(topicCount, "topic")}, {plural(noteCount, "note")},{" "}
-              {plural(documentCount, "document")}
+              {plural(documentCount, "document")}, {plural(cardCount, "flashcard")}
             </span>
           </span>
         }
@@ -101,7 +103,7 @@ export default async function SubjectLayout({ params, children }: LayoutProps<"/
 
       {subject.description && <p className="mt-6 max-w-prose text-sm whitespace-pre-line">{subject.description}</p>}
 
-      <SubjectTabs subjectId={subject.id} noteCount={noteCount} documentCount={documentCount} />
+      <SubjectTabs subjectId={subject.id} noteCount={noteCount} documentCount={documentCount} cardCount={cardCount} />
 
       <div className="mt-6">{children}</div>
     </PageContainer>

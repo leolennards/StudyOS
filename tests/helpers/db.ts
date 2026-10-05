@@ -7,7 +7,7 @@ import { users, workspaceMembers, workspaces } from "@/server/platform/db/schema
 /** Empties every table between tests. */
 export async function resetDatabase() {
   await getDb().execute(
-    sql`truncate table users, workspaces, workspace_members, subjects, sections, topics, documents, document_pages, document_topics, notes, note_topics, user_settings, accounts, sessions, verifications, rate_limits restart identity cascade`,
+    sql`truncate table users, workspaces, workspace_members, subjects, sections, topics, documents, document_pages, document_topics, notes, note_topics, cards, card_topics, card_states, card_reviews, user_settings, accounts, sessions, verifications, rate_limits restart identity cascade`,
   );
 }
 

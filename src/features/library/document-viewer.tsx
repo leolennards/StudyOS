@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { CardDialog, type CardDialogState } from "@/features/flashcards/card-dialog";
+import type { TopicGroup } from "@/features/knowledge/topic-groups";
 import { cn } from "@/lib/utils";
 import { DocumentText, type PageText } from "./document-text";
 import { PdfViewer } from "./pdf-viewer";
@@ -13,6 +15,7 @@ export function DocumentViewer({
   pages,
   pageLabel,
   initialPage,
+  cards,
 }: {
   title: string;
   preview: "pdf" | "image" | "text";
@@ -20,9 +23,12 @@ export function DocumentViewer({
   pages: PageText[];
   pageLabel: string;
   initialPage?: number;
+  /** Lets the student make flashcards from the extracted text, linked back to the page. */
+  cards?: { subjectId: string; documentId: string; topicIds: string[]; groups: TopicGroup[] };
 }) {
   const hasOriginal = preview !== "text" && viewUrl !== null;
   const [tab, setTab] = useState<"original" | "text">(hasOriginal ? "original" : "text");
+  const [cardState, setCardState] = useState<CardDialogState | null>(null);
 
   return (
     <div>
@@ -66,8 +72,33 @@ export function DocumentViewer({
           ))}
       </div>
       <div id="viewer-text" role={hasOriginal ? "tabpanel" : undefined} hidden={tab !== "text"}>
-        <DocumentText pages={pages} pageLabel={pageLabel} />
+        <DocumentText
+          pages={pages}
+          pageLabel={pageLabel}
+          onMakeCard={
+            cards
+              ? (pageNumber, text) =>
+                  setCardState({
+                    mode: "create",
+                    draft: {
+                      front: text,
+                      topicIds: cards.topicIds,
+                      sourceDocumentId: cards.documentId,
+                      sourcePage: pageNumber,
+                    },
+                  })
+              : undefined
+          }
+        />
       </div>
+      {cards && (
+        <CardDialog
+          subjectId={cards.subjectId}
+          groups={cards.groups}
+          state={cardState}
+          onClose={() => setCardState(null)}
+        />
+      )}
     </div>
   );
 }

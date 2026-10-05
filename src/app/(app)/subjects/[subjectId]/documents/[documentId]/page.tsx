@@ -107,6 +107,12 @@ export default async function DocumentPage({
             pages={pages}
             pageLabel={pageLabel}
             initialPage={initialPage}
+            cards={{
+              subjectId,
+              documentId: doc.id,
+              topicIds: doc.topicIds,
+              groups: topicGroups(tree.sections, tree.unsectioned),
+            }}
           />
         ) : (
           <p className="text-muted-foreground rounded-xl border border-dashed p-6 text-sm">

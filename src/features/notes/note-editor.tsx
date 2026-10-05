@@ -8,6 +8,7 @@ import { AlertTriangle, Check, CloudOff, Loader2, Tags } from "lucide-react";
 import "katex/dist/katex.min.css";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CardDialog, type CardDialogState } from "@/features/flashcards/card-dialog";
 import { TopicsDialog, type TopicsDialogState } from "@/features/knowledge/topics-dialog";
 import type { TopicGroup } from "@/features/knowledge/topic-groups";
 import { useAction } from "@/features/knowledge/use-action";
@@ -59,6 +60,7 @@ export function NoteEditor({
   const [math, setMath] = useState<MathTarget | null>(null);
   const [linkHref, setLinkHref] = useState<string | null>(null);
   const [topicsState, setTopicsState] = useState<TopicsDialogState | null>(null);
+  const [cardState, setCardState] = useState<CardDialogState | null>(null);
   const { run, pending: moving } = useAction();
 
   // Created once per editor: the callbacks only set state, which is stable.
@@ -257,6 +259,12 @@ export function NoteEditor({
             editor={editor}
             onLink={() => setLinkHref(String(editor.getAttributes("link").href ?? ""))}
             onMath={(kind) => setMath({ kind, latex: "", pos: null })}
+            onFlashcard={() =>
+              setCardState({
+                mode: "create",
+                draft: { front: selectedText(editor), topicIds: note.topicIds, sourceNoteId: note.id },
+              })
+            }
           />
         )}
         {editor ? (
@@ -270,6 +278,15 @@ export function NoteEditor({
 
       <MathDialog target={math} onSave={saveMath} onRemove={removeMath} onClose={() => setMath(null)} />
       <LinkDialog href={linkHref} onSave={saveLink} onRemove={removeLink} onClose={() => setLinkHref(null)} />
+      <CardDialog
+        subjectId={note.subjectId}
+        groups={topicGroups}
+        state={cardState}
+        onClose={() => {
+          setCardState(null);
+          editor?.commands.focus();
+        }}
+      />
       <TopicsDialog
         subjectId={note.subjectId}
         groups={topicGroups}
@@ -283,6 +300,19 @@ export function NoteEditor({
       />
     </div>
   );
+}
+
+/** The selected text, with maths kept as LaTeX between dollar signs so the card shows it too. */
+function selectedText(editor: Editor) {
+  const { from, to } = editor.state.selection;
+  if (from === to) return "";
+  return editor.state.doc
+    .textBetween(from, to, "\n", (node) => {
+      if (node.type.name === "inlineMath") return `$${String(node.attrs.latex ?? "")}$`;
+      if (node.type.name === "blockMath") return `$$${String(node.attrs.latex ?? "")}$$`;
+      return "";
+    })
+    .trim();
 }
 
 const longDate = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric" });

@@ -3,6 +3,7 @@ import { PageContainer, PageHeader } from "@/components/shared/page-header";
 import { Separator } from "@/components/ui/separator";
 import { PreferencesForm } from "@/features/settings/preferences-form";
 import { ProfileForm } from "@/features/settings/profile-form";
+import { ReviewSettingsForm } from "@/features/settings/review-settings-form";
 import { ChangePasswordForm, DeleteAccount } from "@/features/settings/security-section";
 import { requirePageSession } from "@/server/platform/auth/session";
 import { settingsService } from "@/server/modules/settings/service";
@@ -47,6 +48,18 @@ export default async function SettingsPage() {
         <Separator />
         <SettingsSection id="prefs-heading" title="Preferences" description="Appearance and time zone.">
           <PreferencesForm timezone={settings.timezone} theme={settings.theme} />
+        </SettingsSection>
+        <Separator />
+        <SettingsSection
+          id="review-heading"
+          title="Flashcard review"
+          description="How spaced repetition schedules your cards. Days start at midnight in your time zone."
+        >
+          <ReviewSettingsForm
+            desiredRetention={settings.desiredRetention}
+            newCardsPerDay={settings.newCardsPerDay}
+            reviewsPerDay={settings.reviewsPerDay}
+          />
         </SettingsSection>
         <Separator />
         {hasPassword && (

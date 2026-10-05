@@ -4,7 +4,18 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Command } from "cmdk";
 import { Dialog as DialogPrimitive } from "radix-ui";
-import { FileText, Hash, Library, Loader2, NotebookPen, Search, Settings, Sunrise } from "lucide-react";
+import {
+  FileText,
+  GalleryVerticalEnd,
+  Hash,
+  Layers,
+  Library,
+  Loader2,
+  NotebookPen,
+  Search,
+  Settings,
+  Sunrise,
+} from "lucide-react";
 import { SubjectDot } from "@/features/knowledge/subject-dot";
 import { cn } from "@/lib/utils";
 import { search } from "@/server/actions/search";
@@ -104,7 +115,9 @@ function Palette({ subjects, close }: { subjects: PaletteSubject[]; close: () =>
   }
 
   const shown = trimmed ? results : null;
-  const total = shown ? shown.subjects.length + shown.topics.length + shown.notes.length + shown.documents.length : 0;
+  const total = shown
+    ? shown.subjects.length + shown.topics.length + shown.notes.length + shown.cards.length + shown.documents.length
+    : 0;
   const subjectName = new Map(subjects.map((s) => [s.id, s.name] as const));
 
   return (
@@ -118,7 +131,7 @@ function Palette({ subjects, close }: { subjects: PaletteSubject[]; close: () =>
         <Command.Input
           value={query}
           onValueChange={setQuery}
-          placeholder="Search notes, documents and topics…"
+          placeholder="Search notes, documents, flashcards and topics…"
           className="placeholder:text-muted-foreground h-12 min-w-0 flex-1 bg-transparent text-base outline-none"
         />
         {currentSubject && (
@@ -142,6 +155,7 @@ function Palette({ subjects, close }: { subjects: PaletteSubject[]; close: () =>
           <>
             <Group heading="Go to">
               <Item value="go-today" onSelect={() => go("/today")} icon={<Sunrise />} title="Today" />
+              <Item value="go-review" onSelect={() => go("/review")} icon={<GalleryVerticalEnd />} title="Review" />
               <Item value="go-subjects" onSelect={() => go("/subjects")} icon={<Library />} title="Subjects" />
               <Item value="go-settings" onSelect={() => go("/settings")} icon={<Settings />} title="Settings" />
             </Group>
@@ -210,6 +224,21 @@ function Palette({ subjects, close }: { subjects: PaletteSubject[]; close: () =>
                 title={n.title}
                 meta={subjectId ? undefined : subjectName.get(n.subjectId)}
                 snippet={n.snippet}
+              />
+            ))}
+          </Group>
+        )}
+        {shown && shown.cards.length > 0 && (
+          <Group heading="Flashcards">
+            {shown.cards.map((c) => (
+              <Item
+                key={c.id}
+                value={`card-${c.id}`}
+                onSelect={() => go(`/subjects/${c.subjectId}/flashcards?card=${c.id}`)}
+                icon={<Layers />}
+                title={c.title}
+                meta={subjectId ? undefined : subjectName.get(c.subjectId)}
+                snippet={c.snippet}
               />
             ))}
           </Group>

@@ -1,6 +1,8 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { closeDb } from "@/server/platform/db/client";
+import { newId } from "@/server/lib/ids";
 import { isAppError } from "@/server/lib/errors";
+import { flashcardsService } from "@/server/modules/flashcards/service";
 import { knowledgeService } from "@/server/modules/knowledge/service";
 import { settingsService } from "@/server/modules/settings/service";
 import { libraryService } from "@/server/modules/library/service";
@@ -178,9 +180,19 @@ describe("writes cannot touch another workspace", () => {
 
 describe("settings are per user", () => {
   it("one user's preferences never appear for another", async () => {
-    await settingsService.update(alice, { theme: "dark", timezone: "Africa/Johannesburg" });
-    expect(await settingsService.get(bob)).toEqual({ theme: "system", timezone: "UTC" });
-    expect(await settingsService.get(alice)).toEqual({ theme: "dark", timezone: "Africa/Johannesburg" });
+    await settingsService.update(alice, { theme: "dark", timezone: "Africa/Johannesburg", newCardsPerDay: 5 });
+    expect(await settingsService.get(bob)).toEqual({
+      theme: "system",
+      timezone: "UTC",
+      desiredRetention: 0.9,
+      newCardsPerDay: 20,
+      reviewsPerDay: 200,
+    });
+    expect(await settingsService.get(alice)).toMatchObject({
+      theme: "dark",
+      timezone: "Africa/Johannesburg",
+      newCardsPerDay: 5,
+    });
   });
 });
 
@@ -325,8 +337,109 @@ describe("notes are scoped to the workspace", () => {
   });
 });
 
+describe("flashcards and their reviews are scoped to the workspace", () => {
+  let aliceCard: string;
+
+  beforeEach(async () => {
+    ({ id: aliceCard } = await flashcardsService.createCard(alice, {
+      subjectId: aliceData.subjectId,
+      type: "reverse",
+      front: "Alice's secret card",
+      back: "Alice's answer",
+      topicIds: [aliceData.topicId],
+    }));
+  });
+
+  it("Bob cannot list, read, count or review-scope Alice's cards", async () => {
+    expect(await denied(() => flashcardsService.listCards(bob, { subjectId: aliceData.subjectId }))).toBe("NOT_FOUND");
+    expect(await denied(() => flashcardsService.getCard(bob, aliceCard))).toBe("NOT_FOUND");
+    expect(await flashcardsService.countCards(bob)).toBe(0);
+    expect(await denied(() => flashcardsService.getSession(bob, { subjectId: aliceData.subjectId }))).toBe("NOT_FOUND");
+    expect(await denied(() => flashcardsService.getOverview(bob, { topicId: aliceData.topicId }))).toBe("NOT_FOUND");
+  });
+
+  it("Bob's own review queue, counts and overview never include Alice's cards", async () => {
+    const session = await flashcardsService.getSession(bob);
+    expect(session.items).toEqual([]);
+    expect(await flashcardsService.getOverview(bob)).toMatchObject({ due: 0, new: 0, total: 0 });
+    expect((await flashcardsService.getSubjectCounts(bob)).size).toBe(0);
+  });
+
+  it("Bob cannot create a card in Alice's subject", async () => {
+    expect(
+      await denied(() =>
+        flashcardsService.createCard(bob, { subjectId: aliceData.subjectId, type: "basic", front: "Q", back: "A" }),
+      ),
+    ).toBe("NOT_FOUND");
+  });
+
+  it("Bob cannot edit, suspend, delete, review or undo Alice's card", async () => {
+    const reviewId = newId();
+    await flashcardsService.reviewCard(alice, { reviewId, cardId: aliceCard, ordinal: 0, rating: 3 });
+
+    expect(
+      await denied(() =>
+        flashcardsService.updateCard(bob, { id: aliceCard, type: "basic", front: "Hacked", back: "Hacked" }),
+      ),
+    ).toBe("NOT_FOUND");
+    expect(await denied(() => flashcardsService.setSuspended(bob, { id: aliceCard, suspended: true }))).toBe(
+      "NOT_FOUND",
+    );
+    expect(await denied(() => flashcardsService.deleteCard(bob, { id: aliceCard }))).toBe("NOT_FOUND");
+    expect(
+      await denied(() =>
+        flashcardsService.reviewCard(bob, { reviewId: newId(), cardId: aliceCard, ordinal: 1, rating: 1 }),
+      ),
+    ).toBe("NOT_FOUND");
+    expect(await denied(() => flashcardsService.undoReview(bob, { reviewId }))).toBe("NOT_FOUND");
+    // Reusing Alice's rating id reveals nothing and changes nothing.
+    expect(
+      await denied(() => flashcardsService.reviewCard(bob, { reviewId, cardId: aliceCard, ordinal: 0, rating: 1 })),
+    ).toBe("NOT_FOUND");
+
+    const card = await flashcardsService.getCard(alice, aliceCard);
+    expect(card).toMatchObject({ front: "Alice's secret card", suspended: false, type: "reverse" });
+    expect(card.items.map((i) => [i.ordinal, i.state])).toEqual([
+      [0, "learning"],
+      [1, "new"],
+    ]);
+  });
+
+  it("Bob cannot link Alice's topic, note or document to his own card", async () => {
+    const bobSubject = await knowledgeService.createSubject(bob, {
+      name: "Bob's Biology",
+      code: null,
+      term: null,
+      description: null,
+      colour: "sky",
+    });
+    const card = { subjectId: bobSubject.id, type: "basic" as const, front: "Q", back: "A" };
+    expect(await denied(() => flashcardsService.createCard(bob, { ...card, topicIds: [aliceData.topicId] }))).toBe(
+      "VALIDATION",
+    );
+    const aliceNote = await notesService.createNote(alice, { subjectId: aliceData.subjectId });
+    expect(await denied(() => flashcardsService.createCard(bob, { ...card, sourceNoteId: aliceNote.id }))).toBe(
+      "VALIDATION",
+    );
+    const aliceDoc = await uploadFixture(alice, aliceData.subjectId, "reading.txt");
+    expect(await denied(() => flashcardsService.createCard(bob, { ...card, sourceDocumentId: aliceDoc }))).toBe(
+      "VALIDATION",
+    );
+    const { id } = await flashcardsService.createCard(bob, card);
+    expect(await denied(() => flashcardsService.updateCard(bob, { id, ...card, topicIds: [aliceData.topicId] }))).toBe(
+      "VALIDATION",
+    );
+  });
+});
+
 describe("search is scoped to the workspace", () => {
-  it("Bob's searches never return Alice's subjects, topics, notes or documents", async () => {
+  it("Bob's searches never return Alice's subjects, topics, notes, cards or documents", async () => {
+    await flashcardsService.createCard(alice, {
+      subjectId: aliceData.subjectId,
+      type: "basic",
+      front: "Alice's mitochondria card",
+      back: "Chemistry",
+    });
     const { id } = await notesService.createNote(alice, { subjectId: aliceData.subjectId });
     await notesService.saveNote(alice, {
       id,
@@ -342,12 +455,14 @@ describe("search is scoped to the workspace", () => {
         subjects: [],
         topics: [],
         notes: [],
+        cards: [],
         documents: [],
       });
     }
     // The same searches do find Alice's data for Alice.
     const mine = await searchService.search(alice, { q: "mitochondria" });
     expect(mine.notes).toHaveLength(1);
+    expect(mine.cards).toHaveLength(1);
     expect(mine.documents).toHaveLength(1);
   });
 

@@ -9,10 +9,12 @@ export function SubjectTabs({
   subjectId,
   noteCount,
   documentCount,
+  cardCount,
 }: {
   subjectId: string;
   noteCount: number;
   documentCount: number;
+  cardCount: number;
 }) {
   const pathname = usePathname();
   const base = `/subjects/${subjectId}`;
@@ -30,16 +32,22 @@ export function SubjectTabs({
       count: documentCount,
       current: pathname.startsWith(`${base}/documents`),
     },
+    {
+      href: `${base}/flashcards`,
+      label: "Flashcards",
+      count: cardCount,
+      current: pathname.startsWith(`${base}/flashcards`),
+    },
   ];
   return (
-    <nav aria-label="Subject sections" className="mt-8 flex gap-1 border-b">
+    <nav aria-label="Subject sections" className="mt-8 flex gap-1 overflow-x-auto border-b">
       {tabs.map((tab) => (
         <Link
           key={tab.href}
           href={tab.href}
           aria-current={tab.current ? "page" : undefined}
           className={cn(
-            "focus-visible:ring-ring/50 -mb-px inline-flex items-center gap-2 border-b-2 px-3 py-2 text-sm outline-none focus-visible:ring-[3px]",
+            "focus-visible:ring-ring/50 -mb-px inline-flex shrink-0 items-center gap-2 border-b-2 px-3 py-2 text-sm outline-none focus-visible:ring-[3px]",
             tab.current
               ? "border-primary text-foreground font-medium"
               : "text-muted-foreground hover:text-foreground border-transparent",

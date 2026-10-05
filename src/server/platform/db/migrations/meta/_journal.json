@@ -22,6 +22,13 @@
       "when": 1791207703972,
       "tag": "0002_notes_search",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791210424433,
+      "tag": "0003_flashcards",
+      "breakpoints": true
     }
   ]
 }
