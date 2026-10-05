@@ -1,0 +1,46 @@
+# Local development dependencies. The application itself runs on the host with
+# `pnpm dev`, so a code change does not need an image rebuild.
+#
+# Start with: docker compose -f docker/compose.yaml up -d
+
+name: studyos
+
+services:
+  postgres:
+    # pgvector is not used until Phase 3, but developing against the same image
+    # production will run avoids a surprise when the first embedding lands.
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: studyos
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d studyos"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # A second database so `pnpm test:integration` and `pnpm test:e2e` never touch
+  # the data you were working with by hand.
+  postgres-test:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: studyos_test
+    ports:
+      - "5433:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d studyos_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:
