@@ -9,7 +9,8 @@ export default function setup() {
   if (!url) throw new Error("TEST_DATABASE_URL is not set (see README: running the tests)");
   process.env.DATABASE_URL = url;
   execFileSync("node", ["--experimental-strip-types", "scripts/migrate.ts"], {
-    env: { ...process.env, DATABASE_URL: url },
+    // An empty DATABASE_URL_UNPOOLED stops one from a local .env taking over.
+    env: { ...process.env, DATABASE_URL: url, DATABASE_URL_UNPOOLED: "" },
     stdio: "inherit",
   });
 }

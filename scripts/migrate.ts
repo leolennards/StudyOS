@@ -1,6 +1,8 @@
 /**
  * Applies pending SQL migrations. Run as a release step before the new
- * web and worker processes start: `pnpm db:migrate`.
+ * web and worker processes start: `pnpm db:migrate`. On Vercel it runs in
+ * the production build (vercel.json), so a failed migration fails the
+ * deploy and the previous version stays live.
  */
 import "dotenv/config";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -9,7 +11,9 @@ import { Pool } from "pg";
 import { PgBoss } from "pg-boss";
 
 async function main() {
-  const url = process.env.DATABASE_URL;
+  // Schema changes go over a direct connection when one is given; a pooled
+  // one (Neon's "-pooler" address) is for the app's short queries.
+  const url = process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL is not set");
   const pool = new Pool({ connectionString: url, max: 1 });
   try {

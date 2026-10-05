@@ -2,7 +2,8 @@
 #
 # Two processes run from this image: the Next.js server (the default command)
 # and the background worker that processes uploaded documents, started with
-# `pnpm worker`. The worker runs TypeScript from src through tsx, which is why
+# `pnpm worker` (docker/worker.Dockerfile builds the worker alone, without the
+# Next.js build). The worker runs TypeScript from src through tsx, which is why
 # the runtime stage keeps the full node_modules and src rather than only the
 # standalone server output.
 
@@ -45,4 +46,6 @@ COPY --from=build /app/src ./src
 COPY --from=build /app/tsconfig.json ./tsconfig.json
 USER studyos
 EXPOSE 3000
-CMD ["pnpm", "start"]
+# next is started directly: pnpm is not in this stage and would otherwise be
+# downloaded at start-up by a user that cannot write a cache.
+CMD ["node_modules/.bin/next", "start"]

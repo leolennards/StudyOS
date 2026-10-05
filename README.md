@@ -61,6 +61,7 @@ configuration, so a typo fails immediately rather than at the first request.
 | Variable                                          | Required      | What it does                                                                                                  |
 | ------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------- |
 | `DATABASE_URL`                                    | yes           | Postgres connection string.                                                                                   |
+| `DATABASE_URL_UNPOOLED`                           | no            | A direct (unpooled) connection for migrations, if the host offers one. Falls back to `DATABASE_URL`.          |
 | `BETTER_AUTH_SECRET`                              | yes           | Signs sessions. At least 32 characters: `openssl rand -base64 32`.                                            |
 | `BETTER_AUTH_URL`                                 | yes           | The application's own base URL.                                                                               |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`       | no            | Google sign-in. The button appears only when both are set.                                                    |
@@ -77,9 +78,14 @@ configuration, so a typo fails immediately rather than at the first request.
 | `UPLOAD_MAX_MB`                                   | no            | Largest single upload. 50 by default.                                                                         |
 | `STORAGE_QUOTA_MB`                                | no            | Storage per workspace. 2048 by default.                                                                       |
 | `OCR_ENABLED`                                     | no            | `true` by default. Scanned pages are read with Tesseract, which runs offline inside the worker.               |
+| `OCR_RENDER_WIDTH`                                | no            | Pixels across a scanned page is rendered before OCR. 1650 by default; 1240 fits a 512 MB worker.              |
 | `LIBREOFFICE_PATH`                                | no            | The `soffice` binary, if it is not on the `PATH`.                                                             |
 | `WORKER_CONCURRENCY`                              | no            | Documents processed at once by one worker. 2 by default.                                                      |
 | `WORKER_HEALTH_PORT`                              | no            | When set, the worker answers `GET /health` on this port for the host's health check.                          |
+| `WORKER_URL`                                      | no            | Set on the web app when the worker's host sleeps while idle: the app calls it to wake the worker.             |
+| `WORKER_PUBLIC_URL`                               | no            | Set on the worker, same address: it calls itself while jobs are waiting so its host does not stop it.         |
+| `CRON_SECRET`                                     | no            | The scheduler sends this as `Authorization: Bearer …` to `/api/cron/wake-worker`.                             |
+| `SIGNUP_ALLOWED_EMAILS`                           | no            | Comma-separated addresses allowed to create an account. Unset means anyone can.                               |
 
 With S3 storage the browser uploads straight to the bucket, so the bucket needs a
 CORS rule allowing `PUT` and `GET` from the application's origin with the
@@ -129,6 +135,7 @@ leak one student's work to another.
 | `pnpm db:migrate`                   | Applies pending migrations.                         |
 | `pnpm db:studio`                    | Drizzle Studio.                                     |
 | `pnpm db:reset`                     | Drops and recreates the schema. Development only.   |
+| `pnpm storage:cors`                 | Allows an address to upload to the bucket.          |
 
 ## Project structure
 
@@ -169,9 +176,18 @@ lint` rather than waiting to be noticed in review.
 
 ## Deployment
 
+**[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) is the step-by-step guide** to
+running StudyOS online on free plans: Vercel for the web app, Neon for
+Postgres, Cloudflare R2 for files and Render for the worker.
+
 `docker/Dockerfile` builds one image that runs two processes: the web server
-(`pnpm start`, the default command) and the worker (`pnpm worker`). The image
-includes LibreOffice for the worker. Run `pnpm db:migrate` as a release step
-before the new processes start; it also installs the job queue's tables.
-Production needs `STORAGE_DRIVER=s3`: local storage only works when the web
-server and the worker share a disk.
+(the default command) and the worker (`pnpm worker`). The image includes
+LibreOffice for the worker. `docker/worker.Dockerfile` builds the worker alone,
+for hosts that take one Dockerfile per service. Run `pnpm db:migrate` as a
+release step before the new processes start; it also installs the job queue's
+tables. Production needs `STORAGE_DRIVER=s3`: local storage only works when the
+web server and the worker share a disk.
+
+Where the worker's host sleeps while idle, set `WORKER_URL` on the web app and
+`WORKER_PUBLIC_URL` on the worker: the app wakes the worker when a file is
+uploaded, and the worker keeps itself awake while its queue has work.
