@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState, useSyncExternalStore } from "react";
 import {
   ChevronsUpDown,
+  GalleryVerticalEnd,
   Library,
   LogOut,
   Menu,
@@ -39,10 +40,11 @@ export type ShellUser = { name: string; email: string };
 /**
  * The app shell (Architecture §1): a short, subject-centric global sidebar.
  * Collapsible to an icon rail on desktop; a drawer on mobile (03 UI/UX spec).
- * Review, Planner, Progress and Tutor are added as their phases are built.
+ * Planner, Progress and Tutor are added as their phases are built.
  */
 const NAV = [
   { href: "/today", label: "Today", icon: Sunrise },
+  { href: "/review", label: "Review", icon: GalleryVerticalEnd },
   { href: "/subjects", label: "Subjects", icon: Library },
 ] as const;
 
@@ -51,11 +53,14 @@ const SIDEBAR_COOKIE = "sidebar_collapsed";
 export function AppShell({
   user,
   subjects,
+  reviewCount,
   initialCollapsed,
   children,
 }: {
   user: ShellUser;
   subjects: ShellSubject[];
+  /** Flashcards waiting today (due plus new), shown beside Review. */
+  reviewCount: number;
   initialCollapsed: boolean;
   children: React.ReactNode;
 }) {
@@ -87,6 +92,7 @@ export function AppShell({
         <SidebarContents
           user={user}
           subjects={subjects}
+          reviewCount={reviewCount}
           collapsed={collapsed}
           onToggle={toggleCollapsed}
           onSearch={openSearch}
@@ -102,6 +108,7 @@ export function AppShell({
           <SidebarContents
             user={user}
             subjects={subjects}
+            reviewCount={reviewCount}
             collapsed={false}
             onNavigate={() => setMobileOpen(false)}
             onSearch={openSearch}
@@ -133,6 +140,7 @@ export function AppShell({
 function SidebarContents({
   user,
   subjects,
+  reviewCount,
   collapsed,
   onToggle,
   onNavigate,
@@ -140,6 +148,7 @@ function SidebarContents({
 }: {
   user: ShellUser;
   subjects: ShellSubject[];
+  reviewCount: number;
   collapsed: boolean;
   onToggle?: () => void;
   onNavigate?: () => void;
@@ -190,6 +199,7 @@ function SidebarContents({
                 icon={<item.icon />}
                 active={isActive(item.href)}
                 collapsed={collapsed}
+                count={item.href === "/review" ? reviewCount : undefined}
               />
             </li>
           ))}
@@ -304,26 +314,38 @@ function NavLink({
   icon,
   active,
   collapsed,
+  count,
 }: {
   href: string;
   label: string;
   icon: React.ReactNode;
   active: boolean;
   collapsed: boolean;
+  count?: number;
 }) {
+  const badge = count !== undefined && count > 0 ? (count > 999 ? "999+" : String(count)) : null;
   const link = (
     <Link
       href={href}
       aria-current={active ? "page" : undefined}
-      aria-label={collapsed ? label : undefined}
+      aria-label={collapsed ? (badge ? `${label}, ${badge} waiting` : label) : undefined}
       className={cn(
-        "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-ring/50 flex h-9 items-center gap-2.5 rounded-md px-2 text-sm outline-none focus-visible:ring-[3px] [&_svg]:size-4 [&_svg]:shrink-0",
+        "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-ring/50 relative flex h-9 items-center gap-2.5 rounded-md px-2 text-sm outline-none focus-visible:ring-[3px] [&_svg]:size-4 [&_svg]:shrink-0",
         active && "bg-sidebar-accent text-sidebar-accent-foreground font-medium",
         collapsed && "justify-center px-0",
       )}
     >
       {icon}
       {!collapsed && label}
+      {badge &&
+        (collapsed ? (
+          <span aria-hidden className="bg-primary absolute top-1.5 right-2 size-2 rounded-full" />
+        ) : (
+          <span className="bg-primary/15 text-primary ml-auto rounded-full px-1.5 text-xs font-medium tabular-nums">
+            {badge}
+            <span className="sr-only"> waiting</span>
+          </span>
+        ))}
     </Link>
   );
   if (!collapsed) return link;

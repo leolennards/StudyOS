@@ -1,13 +1,16 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { ArrowRight, Check, Circle } from "lucide-react";
+import { ArrowRight, Check, Circle, GalleryVerticalEnd } from "lucide-react";
 import { PageContainer, PageHeader } from "@/components/shared/page-header";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { NewSubjectButton } from "@/features/knowledge/new-subject-button";
 import { SubjectDot } from "@/features/knowledge/subject-dot";
 import { cn } from "@/lib/utils";
 import { requirePageSession } from "@/server/platform/auth/session";
 import { knowledgeService } from "@/server/modules/knowledge/service";
+import { formatInterval } from "@/server/modules/flashcards/domain/scheduler";
+import { flashcardsService } from "@/server/modules/flashcards/service";
 import { libraryService } from "@/server/modules/library/service";
 import { settingsService } from "@/server/modules/settings/service";
 
@@ -24,10 +27,12 @@ function greeting(timezone: string) {
 
 export default async function TodayPage() {
   const { user, ctx } = await requirePageSession();
-  const [subjects, settings, documentCount] = await Promise.all([
+  const now = new Date();
+  const [subjects, settings, documentCount, review] = await Promise.all([
     knowledgeService.listSubjects(ctx),
     settingsService.get(ctx),
     libraryService.countDocuments(ctx),
+    flashcardsService.getOverview(ctx, {}, now),
   ]);
   const firstName = user.name.split(/\s+/)[0];
   const date = new Intl.DateTimeFormat("en-GB", {
@@ -55,7 +60,13 @@ export default async function TodayPage() {
       done: documentCount > 0,
       href: subjects[0] ? `/subjects/${subjects[0].id}/documents` : "/subjects",
     },
+    {
+      label: "Write your first flashcards",
+      done: review.total > 0,
+      href: subjects[0] ? `/subjects/${subjects[0].id}/flashcards` : "/subjects",
+    },
   ];
+  const waiting = review.due + review.new;
   const remaining = steps.filter((s) => !s.done).length;
 
   return (
@@ -100,40 +111,69 @@ export default async function TodayPage() {
           </CardContent>
         </Card>
 
-        {remaining > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>
-                <h2>Set up StudyOS</h2>
-              </CardTitle>
-              <CardDescription>
-                {steps.length - remaining} of {steps.length} done
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ol className="grid gap-1">
-                {steps.map((step) => (
-                  <li key={step.label}>
-                    <Link
-                      href={step.href}
-                      className={cn(
-                        "hover:bg-accent focus-visible:ring-ring/50 flex items-start gap-3 rounded-md p-2 text-sm outline-none focus-visible:ring-[3px]",
-                        step.done && "text-muted-foreground line-through",
-                      )}
-                    >
-                      {step.done ? (
-                        <Check className="text-success mt-0.5 size-4 shrink-0" aria-label="Done" />
-                      ) : (
-                        <Circle className="text-muted-foreground mt-0.5 size-4 shrink-0" aria-label="Not done" />
-                      )}
-                      {step.label}
+        <div className="grid content-start gap-6">
+          {review.total > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  <h2>Flashcards</h2>
+                </CardTitle>
+                <CardDescription>
+                  {waiting > 0
+                    ? `${review.due} due and ${review.new} new today`
+                    : review.nextDue
+                      ? `All done for now. The next card is due in ${formatInterval(now, review.nextDue)}.`
+                      : "All done for today."}
+                </CardDescription>
+              </CardHeader>
+              {waiting > 0 && (
+                <CardContent>
+                  <Button asChild className="w-full">
+                    <Link href="/review">
+                      <GalleryVerticalEnd aria-hidden />
+                      Start review
                     </Link>
-                  </li>
-                ))}
-              </ol>
-            </CardContent>
-          </Card>
-        )}
+                  </Button>
+                </CardContent>
+              )}
+            </Card>
+          )}
+
+          {remaining > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  <h2>Set up StudyOS</h2>
+                </CardTitle>
+                <CardDescription>
+                  {steps.length - remaining} of {steps.length} done
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ol className="grid gap-1">
+                  {steps.map((step) => (
+                    <li key={step.label}>
+                      <Link
+                        href={step.href}
+                        className={cn(
+                          "hover:bg-accent focus-visible:ring-ring/50 flex items-start gap-3 rounded-md p-2 text-sm outline-none focus-visible:ring-[3px]",
+                          step.done && "text-muted-foreground line-through",
+                        )}
+                      >
+                        {step.done ? (
+                          <Check className="text-success mt-0.5 size-4 shrink-0" aria-label="Done" />
+                        ) : (
+                          <Circle className="text-muted-foreground mt-0.5 size-4 shrink-0" aria-label="Not done" />
+                        )}
+                        {step.label}
+                      </Link>
+                    </li>
+                  ))}
+                </ol>
+              </CardContent>
+            </Card>
+          )}
+        </div>
       </div>
     </PageContainer>
   );

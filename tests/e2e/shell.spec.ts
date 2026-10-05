@@ -3,11 +3,11 @@ import { createSubject, signUp } from "./helpers";
 
 test("the setup checklist tracks real progress", async ({ page }) => {
   await signUp(page);
-  await expect(page.getByText("0 of 4 done")).toBeVisible();
+  await expect(page.getByText("0 of 5 done")).toBeVisible();
 
   await createSubject(page, "Economics");
   await page.goto("/today");
-  await expect(page.getByText("1 of 4 done")).toBeVisible();
+  await expect(page.getByText("1 of 5 done")).toBeVisible();
   await expect(page.getByRole("link", { name: /Economics/ }).first()).toBeVisible();
 });
 

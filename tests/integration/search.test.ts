@@ -156,6 +156,7 @@ describe("queries", () => {
         subjects: [],
         topics: [],
         notes: [],
+        cards: [],
         documents: [],
       });
     }

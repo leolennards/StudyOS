@@ -4,13 +4,14 @@ An AI-powered university study and knowledge-management platform. This repositor
 holds the application; the product and architecture documents live in the project's
 shared folder.
 
-**Current state: Phases 1 to 3 are built.** Accounts, workspaces, the
+**Current state: Phases 1 to 4 are built.** Accounts, workspaces, the
 subject → sections → topics knowledge structure, the application shell and
 settings, documents (upload PDFs, Word files, slides, text and images; text
 extraction with OCR for scanned pages; a viewer; linking documents to topics),
-notes (a rich-text editor with LaTeX maths, autosave and a trash) and keyword
-search across all of it (⌘K) are built and tested. AI, quizzes, flashcards,
-past papers and the planner are designed but not implemented — see
+notes (a rich-text editor with LaTeX maths, autosave and a trash), keyword
+search across all of it (⌘K), and flashcards with spaced-repetition review
+(basic, reversed and cloze cards, scheduled with FSRS) are built and tested. AI,
+quizzes, past papers and the planner are designed but not implemented — see
 `CURRENT STATUS.md` in the project documentation for what exists and what does
 not.
 
@@ -155,6 +156,11 @@ Search is Postgres full-text search (with the `pg_trgm` extension for
 typo-tolerant titles), so it needs nothing beyond the database. The search
 module owns no tables: each module searches its own data and the search service
 combines the results.
+
+Flashcard scheduling is FSRS through the MIT-licensed `ts-fsrs` library. The
+scheduler is pure code in `src/server/modules/flashcards/domain`, used by the
+server to record each rating and by the review screen to label the rating
+buttons and show the next card without waiting.
 
 `eslint.config.mjs` turns those layers into rules: pages cannot reach into the
 database, a module's domain functions cannot reach into anything, and a module's

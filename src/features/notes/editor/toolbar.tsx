@@ -11,6 +11,7 @@ import {
   Columns3,
   Highlighter,
   Italic,
+  Layers,
   Link2,
   List,
   ListOrdered,
@@ -52,10 +53,13 @@ export function EditorToolbar({
   editor,
   onLink,
   onMath,
+  onFlashcard,
 }: {
   editor: Editor;
   onLink: () => void;
   onMath: (kind: MathKind) => void;
+  /** Makes a flashcard from the selected text. */
+  onFlashcard?: () => void;
 }) {
   const state = useEditorState({
     editor,
@@ -220,6 +224,14 @@ export function EditorToolbar({
         <ToolButton label="Table" onClick={() => run().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}>
           <Table />
         </ToolButton>
+      )}
+      {onFlashcard && (
+        <>
+          <Divider />
+          <ToolButton label="Make a flashcard from the selection" onClick={onFlashcard}>
+            <Layers />
+          </ToolButton>
+        </>
       )}
     </div>
   );
