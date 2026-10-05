@@ -2,6 +2,7 @@ import type { z } from "zod";
 import type { RequestContext } from "@/server/lib/context";
 import { AppError, notFound } from "@/server/lib/errors";
 import { newId } from "@/server/lib/ids";
+import { escapeLike, type SearchInput } from "@/server/lib/search-query";
 import { getDb } from "@/server/platform/db/client";
 import { buildTree, canAddChild, moveWithin, nextPosition } from "./domain/tree";
 import { knowledgeRepository as repo } from "./repository";
@@ -67,6 +68,30 @@ export const knowledgeService = {
     ]);
     const { roots, unsectioned } = buildTree(sectionRows, topicRows);
     return { subject, sections: roots, unsectioned, sectionCount: sectionRows.length, topicCount: topicRows.length };
+  },
+
+  /** Subjects and topics whose names match a search. Used by the search module. */
+  async search(ctx: RequestContext, input: SearchInput) {
+    const db = getDb();
+    const q = {
+      text: input.text,
+      like: `%${escapeLike(input.text)}%`,
+      prefix: `${escapeLike(input.text)}%`,
+      limit: input.limit,
+    };
+    const [subjectRows, topicRows] = await Promise.all([
+      input.subjectId ? Promise.resolve([]) : repo.searchSubjects(db, ctx.workspaceId, q),
+      repo.searchTopics(db, ctx.workspaceId, { ...q, subjectId: input.subjectId }),
+    ]);
+    return {
+      subjects: subjectRows.map((s) => ({ ...s, archived: s.archivedAt !== null })),
+      topics: topicRows,
+    };
+  },
+
+  /** A section in the caller's workspace, for other modules that file things under sections. */
+  async getSection(ctx: RequestContext, id: string) {
+    return requireSection(ctx, id);
   },
 
   /** A subject's topics in display order, for pickers in other modules. */

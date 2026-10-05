@@ -31,3 +31,24 @@ test("no page scrolls sideways at phone width", async ({ page }) => {
     expect(overflow, `${path} should not scroll sideways`).toBeLessThanOrEqual(1);
   }
 });
+
+test("the notes list and the note editor fit a phone screen", async ({ page }) => {
+  await signUp(page);
+  await createSubject(page, "Linguistics");
+  await page.getByRole("navigation", { name: "Subject sections" }).getByRole("link", { name: "Notes" }).click();
+  await page.getByRole("button", { name: "New note" }).first().click();
+  await expect(page.getByRole("textbox", { name: "Note" })).toBeVisible();
+  // The formatting bar scrolls on its own; the page itself must not.
+  await expect(page.getByRole("toolbar", { name: "Formatting" })).toBeVisible();
+  for (const where of ["note", "list"]) {
+    if (where === "list") await page.getByRole("main").getByRole("link", { name: "Linguistics" }).click();
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow, `the ${where} page should not scroll sideways`).toBeLessThanOrEqual(1);
+  }
+
+  // Search is in the header on a phone.
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(page.getByRole("dialog", { name: "Search" })).toBeVisible();
+});

@@ -1,6 +1,7 @@
-import { and, asc, count, desc, eq, inArray, lt, sum } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, lt, ne, sql, sum } from "drizzle-orm";
 import type { DbExecutor } from "@/server/platform/db/client";
 import { documentPages, documents, documentTopics } from "@/server/platform/db/schema";
+import { HEADLINE_OPTIONS } from "@/server/lib/search-query";
 
 /**
  * All SQL for the library module. Every query a student's request can reach
@@ -100,7 +101,13 @@ export const libraryRepository = {
 
   listPages(db: DbExecutor, ws: string, documentId: string) {
     return db
-      .select()
+      .select({
+        pageNumber: documentPages.pageNumber,
+        text: documentPages.text,
+        blocks: documentPages.blocks,
+        ocrUsed: documentPages.ocrUsed,
+        ocrConfidence: documentPages.ocrConfidence,
+      })
       .from(documentPages)
       .where(and(eq(documentPages.workspaceId, ws), eq(documentPages.documentId, documentId)))
       .orderBy(asc(documentPages.pageNumber));
@@ -122,6 +129,75 @@ export const libraryRepository = {
     if (topicIds.length > 0) {
       await db.insert(documentTopics).values(topicIds.map((topicId) => ({ workspaceId: ws, documentId, topicId })));
     }
+  },
+
+  // ── search ────────────────────────────────────────────────────────────────
+  /**
+   * Pages whose extracted text matches a query (Architecture §31), at most
+   * two per document, documents with the best page first. Each comes with a
+   * `ts_headline` snippet around the match.
+   */
+  async searchPages(db: DbExecutor, ws: string, q: { tsquery: string; subjectId?: string; limit: number }) {
+    const tsq = sql`to_tsquery('english', ${q.tsquery})`;
+    const subject = q.subjectId ? sql`and d.subject_id = ${q.subjectId}` : sql``;
+    const result = await db.execute(sql`
+      with hits as (
+        select p.document_id, p.page_number, p.text, ts_rank_cd(p.search_vector, ${tsq}) as rank
+        from ${documentPages} p
+        join ${documents} d on d.workspace_id = p.workspace_id and d.id = p.document_id
+        where p.workspace_id = ${ws} and d.status = 'ready' and p.search_vector @@ ${tsq} ${subject}
+      ),
+      ranked as (
+        select *, row_number() over (partition by document_id order by rank desc, page_number) as n,
+               max(rank) over (partition by document_id) as document_rank
+        from hits
+      ),
+      top as (
+        select * from ranked where n <= 2 order by document_rank desc, document_id, n limit ${q.limit * 2}
+      )
+      select document_id, page_number, document_rank, ts_headline('english', text, ${tsq}, ${HEADLINE_OPTIONS}) as headline
+      from top
+      order by document_rank desc, document_id, n
+    `);
+    return (result.rows as { document_id: string; page_number: number; document_rank: number; headline: string }[]).map(
+      (r) => ({
+        documentId: r.document_id,
+        pageNumber: Number(r.page_number),
+        rank: Number(r.document_rank),
+        headline: r.headline,
+      }),
+    );
+  },
+
+  /** Documents whose title contains the typed text or closely matches it. */
+  searchTitles(db: DbExecutor, ws: string, q: { text: string; like: string; subjectId?: string; limit: number }) {
+    return db
+      .select({ id: documents.id })
+      .from(documents)
+      .where(
+        and(
+          eq(documents.workspaceId, ws),
+          ne(documents.status, "pending_upload"),
+          q.subjectId ? eq(documents.subjectId, q.subjectId) : undefined,
+          sql`(${documents.title} ilike ${q.like} or word_similarity(${q.text}, ${documents.title}) >= 0.5)`,
+        ),
+      )
+      .orderBy(sql`word_similarity(${q.text}, ${documents.title}) desc`, desc(documents.createdAt))
+      .limit(q.limit);
+  },
+
+  listByIds(db: DbExecutor, ws: string, ids: string[]) {
+    if (ids.length === 0) return Promise.resolve([]);
+    return db
+      .select({
+        id: documents.id,
+        subjectId: documents.subjectId,
+        title: documents.title,
+        format: documents.format,
+        kind: documents.kind,
+      })
+      .from(documents)
+      .where(and(eq(documents.workspaceId, ws), inArray(documents.id, ids)));
   },
 
   // ── housekeeping (worker only, across workspaces) ─────────────────────────

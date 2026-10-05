@@ -2,7 +2,7 @@ import { FileText } from "lucide-react";
 import { EmptyState } from "@/components/shared/empty-state";
 import { DocumentList } from "@/features/library/document-list";
 import { DocumentUploader } from "@/features/library/document-uploader";
-import { topicGroups } from "@/features/library/topic-groups";
+import { topicGroups } from "@/features/knowledge/topic-groups";
 import { formatBytes } from "@/features/library/types";
 import { env } from "@/server/lib/env";
 import { requirePageSession } from "@/server/platform/auth/session";

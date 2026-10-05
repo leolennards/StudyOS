@@ -8,7 +8,7 @@ import { DocumentActions } from "@/features/library/document-actions";
 import { DocumentStatusLine } from "@/features/library/document-status";
 import { DocumentViewer } from "@/features/library/document-viewer";
 import { FormatIcon } from "@/features/library/format-icon";
-import { topicGroups } from "@/features/library/topic-groups";
+import { topicGroups } from "@/features/knowledge/topic-groups";
 import { formatBytes } from "@/features/library/types";
 import { isAppError } from "@/server/lib/errors";
 import { isUuid } from "@/server/lib/ids";

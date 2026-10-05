@@ -3,6 +3,7 @@ import type { RequestContext } from "@/server/lib/context";
 import { env } from "@/server/lib/env";
 import { AppError, notFound } from "@/server/lib/errors";
 import { newId } from "@/server/lib/ids";
+import { escapeLike, parseHighlights, type SearchInput } from "@/server/lib/search-query";
 import { getDb, withTransaction } from "@/server/platform/db/client";
 import { enqueue, QUEUES } from "@/server/platform/jobs";
 import { documentPrefix, getStorage, originalKey } from "@/server/platform/storage";
@@ -134,6 +135,45 @@ export const libraryService = {
       disposition: "attachment",
       filename: doc.originalFilename,
     });
+  },
+
+  /**
+   * Documents matching a search, used by the search module: those whose
+   * title matches first, then those whose text matches, each with up to two
+   * pages and a highlighted snippet from each.
+   */
+  async search(ctx: RequestContext, input: SearchInput) {
+    const db = getDb();
+    const [titleHits, pageHits] = await Promise.all([
+      repo.searchTitles(db, ctx.workspaceId, {
+        text: input.text,
+        like: `%${escapeLike(input.text)}%`,
+        subjectId: input.subjectId,
+        limit: input.limit,
+      }),
+      input.tsquery
+        ? repo.searchPages(db, ctx.workspaceId, {
+            tsquery: input.tsquery,
+            subjectId: input.subjectId,
+            limit: input.limit,
+          })
+        : Promise.resolve([]),
+    ]);
+    const order: string[] = [];
+    for (const id of [...titleHits.map((h) => h.id), ...pageHits.map((h) => h.documentId)]) {
+      if (!order.includes(id)) order.push(id);
+    }
+    const ids = order.slice(0, input.limit);
+    const docs = new Map((await repo.listByIds(db, ctx.workspaceId, ids)).map((d) => [d.id, d]));
+    return ids
+      .map((id) => docs.get(id))
+      .filter((d) => d !== undefined)
+      .map((d) => ({
+        ...d,
+        pages: pageHits
+          .filter((h) => h.documentId === d.id)
+          .map((h) => ({ pageNumber: h.pageNumber, snippet: parseHighlights(h.headline) })),
+      }));
   },
 
   // ── upload ────────────────────────────────────────────────────────────────

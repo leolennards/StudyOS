@@ -11,29 +11,27 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useAction } from "@/features/knowledge/use-action";
-import { setDocumentTopics } from "@/server/actions/library";
-import type { TopicGroup } from "./types";
+import type { ActionResult } from "@/server/lib/result";
+import type { TopicGroup } from "./topic-groups";
+import { useAction } from "./use-action";
 
 export type TopicsDialogState = { id: string; title: string; topicIds: string[] };
 
-/** Choose which of the subject's topics a document covers. */
-export function DocumentTopicsDialog({
-  subjectId,
-  groups,
-  state,
-  onClose,
-}: {
+type Props = {
   subjectId: string;
   groups: TopicGroup[];
   state: TopicsDialogState | null;
+  /** Says what linking topics is for, under the title. */
+  description: string;
+  save: (input: { id: string; topicIds: string[] }) => Promise<ActionResult<unknown>>;
   onClose: () => void;
-}) {
+};
+
+/** Choose which of the subject's topics a document or a note covers. */
+export function TopicsDialog({ state, ...props }: Props) {
   return (
-    <Dialog open={state !== null} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
-        {state && <TopicsForm key={state.id} subjectId={subjectId} groups={groups} state={state} onClose={onClose} />}
-      </DialogContent>
+    <Dialog open={state !== null} onOpenChange={(open) => !open && props.onClose()}>
+      <DialogContent>{state && <TopicsForm key={state.id} state={state} {...props} />}</DialogContent>
     </Dialog>
   );
 }
@@ -42,13 +40,10 @@ function TopicsForm({
   subjectId,
   groups,
   state,
+  description,
+  save: saveTopics,
   onClose,
-}: {
-  subjectId: string;
-  groups: TopicGroup[];
-  state: TopicsDialogState;
-  onClose: () => void;
-}) {
+}: Omit<Props, "state"> & { state: TopicsDialogState }) {
   const { run, pending } = useAction();
   const [selected, setSelected] = useState(() => new Set(state.topicIds));
   const hasTopics = groups.some((g) => g.topics.length > 0);
@@ -62,7 +57,7 @@ function TopicsForm({
     });
 
   async function save() {
-    const ok = await run(() => setDocumentTopics({ id: state.id, topicIds: [...selected] }), {
+    const ok = await run(() => saveTopics({ id: state.id, topicIds: [...selected] }), {
       success: "Topics updated",
     });
     if (ok) onClose();
@@ -72,7 +67,7 @@ function TopicsForm({
     <>
       <DialogHeader>
         <DialogTitle>Topics in {state.title}</DialogTitle>
-        <DialogDescription>Link the topics this document covers, so you can find it from each one.</DialogDescription>
+        <DialogDescription>{description}</DialogDescription>
       </DialogHeader>
       {hasTopics ? (
         <div className="grid max-h-80 gap-4 overflow-y-auto pr-1">

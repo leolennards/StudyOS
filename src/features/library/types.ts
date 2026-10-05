@@ -21,7 +21,7 @@ export type DocumentListItem = {
   topics: { id: string; name: string }[];
 };
 
-export type TopicGroup = { label: string; topics: { id: string; name: string }[] };
+export type { TopicGroup } from "@/features/knowledge/topic-groups";
 
 export function formatBytes(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;

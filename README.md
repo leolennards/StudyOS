@@ -4,13 +4,15 @@ An AI-powered university study and knowledge-management platform. This repositor
 holds the application; the product and architecture documents live in the project's
 shared folder.
 
-**Current state: Phases 1 and 2 are complete.** Accounts, workspaces, the
+**Current state: Phases 1 to 3 are built.** Accounts, workspaces, the
 subject → sections → topics knowledge structure, the application shell and
-settings, and documents (upload PDFs, Word files, slides, text and images; text
-extraction with OCR for scanned pages; a viewer; linking documents to topics)
-are built and tested. Search, AI, quizzes, flashcards, past papers and the
-planner are designed but not implemented — see `CURRENT STATUS.md` in the
-project documentation for what exists and what does not.
+settings, documents (upload PDFs, Word files, slides, text and images; text
+extraction with OCR for scanned pages; a viewer; linking documents to topics),
+notes (a rich-text editor with LaTeX maths, autosave and a trash) and keyword
+search across all of it (⌘K) are built and tested. AI, quizzes, flashcards,
+past papers and the planner are designed but not implemented — see
+`CURRENT STATUS.md` in the project documentation for what exists and what does
+not.
 
 ## Architecture in one paragraph
 
@@ -39,7 +41,7 @@ cp .env.example .env            # then fill in the values below
 docker compose -f docker/compose.yaml up -d
 pnpm db:migrate
 pnpm dev                        # http://localhost:3000
-pnpm dev:worker                 # in a second terminal: processes uploads
+pnpm dev:worker                 # in a second terminal: processes uploads, empties old trash
 ```
 
 Uploaded files go to `.data/storage` in development (gitignored). The worker
@@ -116,9 +118,9 @@ leak one student's work to another.
 | Script                              | What it does                                        |
 | ----------------------------------- | --------------------------------------------------- |
 | `pnpm dev`                          | Development server.                                 |
-| `pnpm dev:worker`                   | Document worker, restarting on changes.             |
+| `pnpm dev:worker`                   | Background worker, restarting on changes.           |
 | `pnpm build` / `pnpm start`         | Production build and server.                        |
-| `pnpm worker`                       | Document worker, for production.                    |
+| `pnpm worker`                       | Background worker, for production.                  |
 | `pnpm typecheck`                    | Generates Next's route types, then `tsc --noEmit`.  |
 | `pnpm lint`                         | ESLint, including the architectural boundary rules. |
 | `pnpm format` / `pnpm format:check` | Prettier.                                           |
@@ -148,6 +150,11 @@ tests/
   e2e/                      Playwright, desktop and mobile
 docker/                     Dockerfile and local compose file
 ```
+
+Search is Postgres full-text search (with the `pg_trgm` extension for
+typo-tolerant titles), so it needs nothing beyond the database. The search
+module owns no tables: each module searches its own data and the search service
+combines the results.
 
 `eslint.config.mjs` turns those layers into rules: pages cannot reach into the
 database, a module's domain functions cannot reach into anything, and a module's
