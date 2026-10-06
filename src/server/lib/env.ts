@@ -50,9 +50,24 @@ const schema = z
     STORAGE_QUOTA_MB: z.coerce.number().int().positive().default(2048),
     // Document processing in the worker.
     OCR_ENABLED: flag(true),
+    // How many pixels across a scanned page is rendered before OCR reads it.
+    // 1650 (about 200 dpi on A4) reads best; 1240 keeps a 512 MB machine
+    // inside its memory, which the free worker plan in docs/DEPLOYMENT.md needs.
+    OCR_RENDER_WIDTH: z.coerce.number().int().min(800).max(4000).default(1650),
     LIBREOFFICE_PATH: z.string().optional(),
     WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(16).default(2),
     WORKER_HEALTH_PORT: z.coerce.number().int().positive().optional(),
+    // Hosting on free tiers (docs/DEPLOYMENT.md). A free worker host sleeps
+    // when idle: the web app calls WORKER_URL to wake it when there is work,
+    // and the worker calls its own public address to stay awake until the
+    // queue is empty.
+    WORKER_URL: z.string().url().optional(),
+    WORKER_PUBLIC_URL: z.string().url().optional(),
+    // Shared secret the scheduler sends to /api/cron/* routes.
+    CRON_SECRET: z.string().min(16).optional(),
+    // Comma-separated email addresses allowed to create an account. Unset
+    // means anyone can sign up.
+    SIGNUP_ALLOWED_EMAILS: z.string().optional(),
   })
   .superRefine((env, ctx) => {
     // `next build` runs with NODE_ENV=production but without runtime secrets,
@@ -63,7 +78,7 @@ const schema = z
         code: "custom",
         path: ["RESEND_API_KEY"],
         message:
-          "RESEND_API_KEY is required in production so verification and reset emails are delivered. Set EMAIL_TRANSPORT=log only for test environments where no email is sent.",
+          "RESEND_API_KEY is required in production so verification and reset emails are delivered. Set EMAIL_TRANSPORT=log only where no email is sent: test environments and the worker.",
       });
     }
     // Local storage in production only when chosen on purpose, as with email.

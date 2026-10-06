@@ -1,5 +1,6 @@
 import "server-only";
 import { betterAuth } from "better-auth";
+import { APIError } from "better-auth/api";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
 import { env } from "@/server/lib/env";
@@ -9,8 +10,10 @@ import { accounts, rateLimits, sessions, users, verifications } from "@/server/p
 import { actionEmail } from "@/server/platform/email";
 import { logger } from "@/server/platform/observability/logger";
 import { workspaceService } from "@/server/modules/workspaces/service";
+import { isSignupAllowed, parseAllowedEmails } from "./signup-policy";
 
 const e = env();
+const allowedEmails = parseAllowedEmails(e.SIGNUP_ALLOWED_EMAILS);
 
 /**
  * Authentication (ADR-004): Better Auth with users and sessions in our own
@@ -98,6 +101,16 @@ export const auth = betterAuth({
   databaseHooks: {
     user: {
       create: {
+        // Applies to every way of signing up, including Google and Microsoft.
+        before: async (user) => {
+          if (!isSignupAllowed(user.email, allowedEmails)) {
+            logger.warn("sign-up refused: email not on the allow-list");
+            throw new APIError("FORBIDDEN", {
+              code: "SIGN_UP_NOT_ALLOWED",
+              message: "Sign-up is closed for this address.",
+            });
+          }
+        },
         after: async (user) => {
           // Every user gets a personal workspace (ADR-005). If this fails, the
           // session resolver creates it on the next request instead.

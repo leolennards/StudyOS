@@ -21,7 +21,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:studio": "drizzle-kit studio",
-    "db:reset": "tsx scripts/reset-db.ts"
+    "db:reset": "tsx scripts/reset-db.ts",
+    "storage:cors": "tsx scripts/storage-cors.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1146.0",

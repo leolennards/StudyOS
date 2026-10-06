@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { action } from "@/server/lib/action";
 import { libraryService } from "@/server/modules/library/service";
 import {
@@ -10,6 +11,7 @@ import {
   setDocumentTopicsSchema,
   updateDocumentSchema,
 } from "@/server/modules/library/schemas";
+import { wakeWorker } from "@/server/platform/jobs/wake";
 
 /** Thin transport layer for the library module: validation, auth and error mapping live in `action()`. */
 
@@ -23,15 +25,23 @@ export const createUpload = action(createUploadSchema, (ctx, input) => librarySe
 
 export const confirmUpload = action(documentIdSchema, async (ctx, input) => {
   const result = await libraryService.confirmUpload(ctx, input);
+  after(wakeWorker);
   refresh();
   return result;
 });
 
-export const getDocumentStatuses = action(documentStatusesSchema, (ctx, input) =>
-  libraryService.getStatuses(ctx, input.ids),
-);
+export const getDocumentStatuses = action(documentStatusesSchema, async (ctx, input) => {
+  const statuses = await libraryService.getStatuses(ctx, input.ids);
+  // A document still waiting means the worker should be running; wake it in case its host put it to sleep.
+  if (statuses.some((s) => s.status === "uploaded" || s.status === "processing")) after(wakeWorker);
+  return statuses;
+});
 
-export const retryDocument = action(documentIdSchema, (ctx, input) => libraryService.retryProcessing(ctx, input));
+export const retryDocument = action(documentIdSchema, async (ctx, input) => {
+  const result = await libraryService.retryProcessing(ctx, input);
+  after(wakeWorker);
+  return result;
+});
 
 export const updateDocument = action(updateDocumentSchema, async (ctx, input) => {
   const result = await libraryService.updateDocument(ctx, input);

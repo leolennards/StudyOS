@@ -165,13 +165,14 @@ async function ocr(image: Buffer) {
  */
 async function ocrPdfPages(pdfData: Buffer, pages: ExtractedPage[], progress: Progress, from: number, to: number) {
   if (!env().OCR_ENABLED) return;
+  const renderWidth = env().OCR_RENDER_WIDTH;
   const candidates = pages.filter((p) => needsOcr(p.text)).slice(0, PROCESSING_LIMITS.maxOcrPages);
   if (candidates.length === 0) return;
   const pdf = await openPdf(pdfData);
   try {
     for (const [i, p] of candidates.entries()) {
       await progress("recognising", Math.round(from + ((to - from) * i) / candidates.length));
-      const result = await ocr(await renderPdfPage(pdf, p.pageNumber));
+      const result = await ocr(await renderPdfPage(pdf, p.pageNumber, renderWidth));
       // Keep the text layer when OCR finds no more than it did.
       if (countCharacters(result.text) > countCharacters(p.text)) {
         p.text = result.text;

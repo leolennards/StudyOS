@@ -30,13 +30,21 @@ export async function readPdfText(pdf: PdfDocument) {
   return text.map((t) => normaliseText(t));
 }
 
-/** Renders one page to PNG for OCR, at roughly 200 dpi for an A4 page. */
-export async function renderPdfPage(pdf: PdfDocument, pageNumber: number) {
+/**
+ * Renders one page to PNG for OCR, as many pixels across as `targetWidth`
+ * asks for. Wider is more accurate and uses more memory, which is what
+ * limits a small machine (OCR_RENDER_WIDTH in the README).
+ */
+export async function renderPdfPage(pdf: PdfDocument, pageNumber: number, targetWidth: number) {
   const page = await pdf.getPage(pageNumber);
   const { width } = page.getViewport({ scale: 1 });
-  // A4 is 595pt wide; 1650px across is about 200 dpi, where Tesseract does well.
-  const scale = Math.min(4, Math.max(1, 1650 / width));
+  const scale = Math.min(4, Math.max(1, targetWidth / width));
   const png = await renderPageAsImage(pdf, pageNumber, { canvasImport: () => import("@napi-rs/canvas"), scale });
+  // pdf.js holds each rendered page's fonts, images and operator list until
+  // asked to let go; over a long scanned document that is hundreds of
+  // megabytes, which a small machine does not have.
+  page.cleanup();
+  await pdf.cleanup();
   return Buffer.from(png);
 }
 

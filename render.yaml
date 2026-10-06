@@ -1,0 +1,51 @@
+# Render Blueprint for the background worker (docs/DEPLOYMENT.md).
+# The web app runs on Vercel; this is the second process, which reads
+# uploaded documents. Values marked `sync: false` are asked for when the
+# Blueprint is created and are never stored in this file.
+services:
+  - type: web
+    # A "web" service because Render's free plan has no background workers.
+    # Its only page is /health, which is also how it is woken up.
+    name: studyos-worker
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./docker/worker.Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    buildFilter:
+      paths:
+        - src/**
+        - scripts/**
+        - docker/worker.Dockerfile
+        - package.json
+        - pnpm-lock.yaml
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: STORAGE_DRIVER
+        value: s3
+      - key: S3_ENDPOINT
+        sync: false
+      - key: S3_REGION
+        value: auto
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      # One document at a time fits the free plan's 512 MB of memory.
+      - key: WORKER_CONCURRENCY
+        value: "1"
+      # The worker sends no email and serves no sign-in, but shares the app's
+      # configuration check, which needs these to be present.
+      - key: EMAIL_TRANSPORT
+        value: log
+      - key: BETTER_AUTH_SECRET
+        generateValue: true
+      - key: BETTER_AUTH_URL
+        sync: false
+      - key: LOG_LEVEL
+        value: info

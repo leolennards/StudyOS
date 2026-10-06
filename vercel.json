@@ -1,0 +1,8 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "installCommand": "pnpm install --frozen-lockfile",
+  "buildCommand": "if [ \"$VERCEL_ENV\" = \"production\" ]; then pnpm db:migrate; fi && pnpm build",
+  "ignoreCommand": "[ \"$VERCEL_ENV\" != \"production\" ]",
+  "crons": [{ "path": "/api/cron/wake-worker", "schedule": "30 4 * * *" }]
+}

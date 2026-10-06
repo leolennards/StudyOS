@@ -13,6 +13,7 @@ const messages: Record<string, string> = {
   PASSWORD_TOO_SHORT: "Use at least 10 characters for your password.",
   INVALID_TOKEN: "This link has expired or was already used. Request a new one.",
   INVALID_PASSWORD: "That password isn't right.",
+  SIGN_UP_NOT_ALLOWED: "This StudyOS is private. Ask its owner to add your email address.",
 };
 
 /** Turns a Better Auth error into a sentence a student can act on. */

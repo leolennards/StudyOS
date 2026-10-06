@@ -13,6 +13,8 @@ import { logger } from "@/server/platform/observability/logger";
 import { libraryJobs } from "@/server/modules/library/jobs";
 import { notesService } from "@/server/modules/notes/service";
 
+const KEEP_AWAKE_INTERVAL_MS = 5 * 60_000;
+
 async function main() {
   const e = env();
   const boss = await getBoss("worker");
@@ -54,11 +56,30 @@ async function main() {
       }).listen(e.WORKER_HEALTH_PORT)
     : null;
 
+  // On a host that sleeps after a spell without incoming requests (Render's
+  // free plan stops a service after 15 minutes), the worker calls its own
+  // public address while jobs are waiting or running, so it is not stopped
+  // half-way through a batch. Once the queue is empty it lets itself sleep;
+  // the web app wakes it again when there is new work.
+  const publicUrl = e.WORKER_PUBLIC_URL ?? process.env.RENDER_EXTERNAL_URL;
+  const keepAwake = publicUrl
+    ? setInterval(async () => {
+        try {
+          const queues = await boss.getQueues(Object.values(QUEUES));
+          const pending = queues.reduce((n, q) => n + q.queuedCount + q.activeCount, 0);
+          if (pending > 0) await fetch(new URL("/health", publicUrl), { signal: AbortSignal.timeout(10_000) });
+        } catch (error) {
+          logger.warn({ err: error }, "keep-awake check failed");
+        }
+      }, KEEP_AWAKE_INTERVAL_MS)
+    : null;
+
   let stopping = false;
   const shutdown = async (signal: string) => {
     if (stopping) return;
     stopping = true;
     logger.info({ signal }, "worker stopping");
+    if (keepAwake) clearInterval(keepAwake);
     health?.close();
     // Lets running jobs finish; unfinished ones are retried by the next worker.
     await stopBoss();
