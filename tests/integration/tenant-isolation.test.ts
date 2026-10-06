@@ -187,6 +187,7 @@ describe("settings are per user", () => {
       desiredRetention: 0.9,
       newCardsPerDay: 20,
       reviewsPerDay: 200,
+      dailyGoalMinutes: 30,
     });
     expect(await settingsService.get(alice)).toMatchObject({
       theme: "dark",

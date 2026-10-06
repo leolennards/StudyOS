@@ -5,6 +5,7 @@ import { PageContainer, PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { NewSubjectButton } from "@/features/knowledge/new-subject-button";
+import { HabitsCard } from "@/features/progress/habits-card";
 import { SubjectDot } from "@/features/knowledge/subject-dot";
 import { cn } from "@/lib/utils";
 import { requirePageSession } from "@/server/platform/auth/session";
@@ -12,6 +13,7 @@ import { knowledgeService } from "@/server/modules/knowledge/service";
 import { formatInterval } from "@/server/modules/flashcards/domain/scheduler";
 import { flashcardsService } from "@/server/modules/flashcards/service";
 import { libraryService } from "@/server/modules/library/service";
+import { progressService } from "@/server/modules/progress/service";
 import { settingsService } from "@/server/modules/settings/service";
 
 export const metadata: Metadata = { title: "Today" };
@@ -28,11 +30,13 @@ function greeting(timezone: string) {
 export default async function TodayPage() {
   const { user, ctx } = await requirePageSession();
   const now = new Date();
-  const [subjects, settings, documentCount, review] = await Promise.all([
+  const [subjects, settings, documentCount, review, habits, waitingBySubject] = await Promise.all([
     knowledgeService.listSubjects(ctx),
     settingsService.get(ctx),
     libraryService.countDocuments(ctx),
     flashcardsService.getOverview(ctx, {}, now),
+    progressService.getHabits(ctx, now),
+    flashcardsService.getSubjectCounts(ctx, now),
   ]);
   const firstName = user.name.split(/\s+/)[0];
   const date = new Intl.DateTimeFormat("en-GB", {
@@ -67,19 +71,27 @@ export default async function TodayPage() {
     },
   ];
   const waiting = review.due + review.new;
+  const cardsWaiting = (subjectId: string) => {
+    const c = waitingBySubject.get(subjectId);
+    return (c?.due ?? 0) + (c?.new ?? 0);
+  };
   const remaining = steps.filter((s) => !s.done).length;
 
   return (
     <PageContainer>
       <PageHeader title={`${greeting(settings.timezone)}, ${firstName}`} description={date} />
 
-      <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_20rem]">
+      <div className="mt-8">
+        <HabitsCard habits={habits} />
+      </div>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_20rem]">
         <Card>
           <CardHeader>
             <CardTitle>
               <h2>Your subjects</h2>
             </CardTitle>
-            <CardDescription>Study recommendations will appear here once you start practising.</CardDescription>
+            <CardDescription>Jump back into a subject, or review the cards waiting in it.</CardDescription>
           </CardHeader>
           <CardContent>
             {subjects.length === 0 ? (
@@ -99,6 +111,11 @@ export default async function TodayPage() {
                     >
                       <SubjectDot colour={s.colour} />
                       <span className="min-w-0 flex-1 truncate font-medium">{s.name}</span>
+                      {cardsWaiting(s.id) > 0 && (
+                        <span className="bg-primary/15 text-primary rounded-full px-2 py-0.5 text-xs font-medium tabular-nums">
+                          {cardsWaiting(s.id)} to review
+                        </span>
+                      )}
                       <span className="text-muted-foreground text-sm">
                         {s.topicCount} topic{s.topicCount === 1 ? "" : "s"}
                       </span>
