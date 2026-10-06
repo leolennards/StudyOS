@@ -26,9 +26,9 @@ anywhere, and moving later is a copy of the files and a new `DATABASE_URL`.
 Two things are worth knowing before you start:
 
 - **R2 asks for a card** to switch object storage on, even on the free
-  allowance. Nothing is charged under 10 GB. If you would rather not, use
-  Backblaze B2 instead (10 GB free, also asks for a card) and set `S3_ENDPOINT`
-  to its address with `S3_REGION` from its hostname.
+  allowance. Nothing is charged under 10 GB. To avoid giving a card, use
+  Backblaze B2 instead (step 2b): 10 GB free with no card, and a daily cap of
+  2,500 downloads, which one person will not reach.
 - **The free worker has 512 MB of memory.** Reading a long scanned PDF with OCR
   peaks around 440 MB with the settings below, so it fits but not with much to
   spare. Everything else (PDFs with a text layer, Word, PowerPoint, images,
@@ -85,6 +85,27 @@ the app's address. Do that after step 4, when you know the address:
 
 - Or, from a checkout with the `S3_*` values in `.env`:
   `pnpm storage:cors https://studyos.vercel.app`
+
+## 2b. Files on Backblaze B2 instead (no card)
+
+Use this instead of step 2, not as well as it.
+
+1. Sign up at https://www.backblaze.com/sign-up/b2-cloud-storage-backup-archive.
+   No card. Pick the **EU Central** region if offered.
+2. **Buckets** → **Create a Bucket**: a unique name such as
+   `studyos-files-<your-name>`, **Private**, encryption off, object lock off.
+3. On the new bucket's card, copy the **Endpoint**, for example
+   `s3.eu-central-003.backblazeb2.com`. `S3_ENDPOINT` is that with `https://`
+   in front. The region is read from it, so `S3_REGION` stays `auto`.
+4. **Application Keys** → **Add a New Application Key**: name `studyos`, access
+   to that one bucket, **Read and Write**. Copy the **keyID** (`S3_ACCESS_KEY_ID`)
+   and the **applicationKey** (`S3_SECRET_ACCESS_KEY`); the second is shown once.
+5. After step 4, on the bucket's card → **CORS Rules** → **Share everything in
+   this bucket with this one origin**, enter the app's address, choose **Both**
+   (or **S3 Compatible API**), and save. If the first upload then fails with a
+   network error, the bucket needs the custom rule instead:
+   `pnpm storage:cors https://your-app.vercel.app` with the `S3_*` values in
+   `.env` and a key that may change bucket settings.
 
 ## 3. Email on Resend
 

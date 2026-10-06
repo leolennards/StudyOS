@@ -11,6 +11,7 @@
  */
 import "dotenv/config";
 import { GetBucketCorsCommand, PutBucketCorsCommand, S3Client } from "@aws-sdk/client-s3";
+import { signingRegion } from "../src/server/platform/storage/region";
 
 async function main() {
   const origins = process.argv.slice(2).map((o) => new URL(o).origin);
@@ -22,7 +23,7 @@ async function main() {
   }
   const client = new S3Client({
     endpoint: S3_ENDPOINT,
-    region: process.env.S3_REGION || "auto",
+    region: signingRegion(S3_ENDPOINT, process.env.S3_REGION || "auto"),
     forcePathStyle: process.env.S3_FORCE_PATH_STYLE === "true" || process.env.S3_FORCE_PATH_STYLE === "1",
     credentials: { accessKeyId: S3_ACCESS_KEY_ID, secretAccessKey: S3_SECRET_ACCESS_KEY },
     requestChecksumCalculation: "WHEN_REQUIRED",

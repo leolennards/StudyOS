@@ -1,5 +1,6 @@
 import { env } from "@/server/lib/env";
 import { LocalStorage } from "./local";
+import { signingRegion } from "./region";
 import { S3Storage } from "./s3";
 import type { StorageAdapter } from "./types";
 
@@ -16,7 +17,7 @@ export function getStorage(): StorageAdapter {
     e.STORAGE_DRIVER === "s3"
       ? new S3Storage({
           endpoint: e.S3_ENDPOINT!,
-          region: e.S3_REGION,
+          region: signingRegion(e.S3_ENDPOINT!, e.S3_REGION),
           bucket: e.S3_BUCKET!,
           accessKeyId: e.S3_ACCESS_KEY_ID!,
           secretAccessKey: e.S3_SECRET_ACCESS_KEY!,
