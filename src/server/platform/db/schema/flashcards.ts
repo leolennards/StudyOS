@@ -27,11 +27,40 @@ import { tsvector } from "./types";
  */
 export const cardType = pgEnum("card_type", ["basic", "reverse", "cloze"]);
 
-/** Where a card came from. Only `user` is written until generated cards arrive. */
+/** Where a card came from: written by the student, generated (a later phase), or imported (ADR-018). */
 export const cardOrigin = pgEnum("card_origin", ["user", "ai", "imported"]);
 
 /** The FSRS learning state of one reviewable item. */
 export const cardLearningState = pgEnum("card_learning_state", ["new", "learning", "review", "relearning"]);
+
+/**
+ * One import of cards from Anki, Quizlet or a spreadsheet into a subject
+ * (ADR-018). Cards remember the import that added them, so an import can be
+ * taken back in one go; deleting it deletes its cards.
+ */
+export const cardImports = pgTable(
+  "card_imports",
+  {
+    /** Chosen by the browser, so every request of one import adds to the same record. */
+    id: uuid("id").primaryKey(),
+    workspaceId: uuid("workspace_id").notNull(),
+    subjectId: uuid("subject_id").notNull(),
+    source: text("source").notNull(),
+    /** The file's name, or what the student called a pasted set. */
+    name: text("name").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("card_imports_workspace_id_id_key").on(t.workspaceId, t.id),
+    foreignKey({
+      name: "card_imports_subject_fk",
+      columns: [t.workspaceId, t.subjectId],
+      foreignColumns: [subjects.workspaceId, subjects.id],
+    }).onDelete("cascade"),
+    index("card_imports_subject_idx").on(t.workspaceId, t.subjectId, t.createdAt),
+    check("card_imports_source_check", sql`${t.source} in ('anki', 'quizlet', 'text')`),
+  ],
+);
 
 /**
  * Flashcards. A card belongs to one subject and links to its topics; there
@@ -53,6 +82,8 @@ export const cards = pgTable(
     sourceNoteId: uuid("source_note_id").references(() => notes.id, { onDelete: "set null" }),
     sourceDocumentId: uuid("source_document_id").references(() => documents.id, { onDelete: "set null" }),
     sourcePage: integer("source_page"),
+    /** The import that added the card, if it was imported. */
+    importId: uuid("import_id"),
     /** A suspended card is kept, with its history, but never shown for review. */
     suspendedAt: timestamp("suspended_at", { withTimezone: true }),
     searchVector: tsvector("search_vector")
@@ -70,7 +101,13 @@ export const cards = pgTable(
       columns: [t.workspaceId, t.subjectId],
       foreignColumns: [subjects.workspaceId, subjects.id],
     }).onDelete("cascade"),
+    foreignKey({
+      name: "cards_import_fk",
+      columns: [t.workspaceId, t.importId],
+      foreignColumns: [cardImports.workspaceId, cardImports.id],
+    }).onDelete("cascade"),
     index("cards_subject_idx").on(t.workspaceId, t.subjectId, t.createdAt),
+    index("cards_import_idx").on(t.workspaceId, t.importId),
     index("cards_search_idx").using("gin", t.searchVector),
     check("cards_source_page_positive", sql`${t.sourcePage} is null or ${t.sourcePage} > 0`),
   ],

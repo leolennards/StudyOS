@@ -47,8 +47,9 @@ yarn-error.log*
 next-env.d.ts
 !.env.example
 
-# PDF viewer assets, copied from pdfjs-dist before dev and build
+# PDF viewer and SQLite assets, copied before dev and build
 /public/pdfjs/
+/public/sqljs/
 
 # local file storage (STORAGE_DRIVER=local)
 /.data/

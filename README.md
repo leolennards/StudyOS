@@ -12,7 +12,8 @@ notes (a rich-text editor with LaTeX maths, autosave and a trash), keyword
 search across all of it (⌘K), flashcards with spaced-repetition review
 (basic, reversed and cloze cards, scheduled with FSRS), a daily goal, streaks, a
 focus timer and a progress page, exam dates with a topic confidence checklist,
-and practice quizzes made from flashcards are built and tested. AI (including
+practice quizzes made from flashcards, and card import from Anki, Quizlet and
+CSV files are built and tested. AI (including
 generated quizzes), past papers and generated study plans are designed but not
 implemented — see `CURRENT STATUS.md` in the project documentation for what exists and what does
 not.

@@ -72,6 +72,7 @@ const eslintConfig = defineConfig([
   },
   globalIgnores([
     "public/pdfjs/**",
+    "public/sqljs/**",
     ".data/**",
     ".next/**",
     "out/**",

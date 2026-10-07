@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { IMPORT_LIMITS, IMPORT_SOURCES } from "./domain/import";
 import { CARD_TEXT_MAX } from "./domain/limits";
 
 /** Input schemas shared by the card editor and review screen (client) and the actions (server). */
@@ -53,6 +54,29 @@ export const reviewCardSchema = z.object({
 });
 
 export const undoReviewSchema = z.object({ reviewId: id });
+
+/**
+ * One request of an import: up to a batch of cards for a subject. Every
+ * request of an import carries the same `importId`, chosen by the browser.
+ */
+export const importCardsSchema = z.object({
+  importId: id,
+  subjectId: id,
+  source: z.enum(IMPORT_SOURCES),
+  name: z
+    .string()
+    .trim()
+    .min(1, "Give the import a name")
+    .max(1_000)
+    .transform((s) => s.slice(0, IMPORT_LIMITS.name)),
+  topicId: id.optional(),
+  cards: z
+    .array(z.object({ type: z.enum(CARD_TYPES), front: cardText, back: cardText }))
+    .min(1)
+    .max(IMPORT_LIMITS.batch),
+});
+
+export const importIdSchema = z.object({ id });
 
 export type CreateCardInput = z.input<typeof createCardSchema>;
 export type UpdateCardInput = z.input<typeof updateCardSchema>;
