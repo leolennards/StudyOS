@@ -7,6 +7,7 @@ import {
   CalendarClock,
   ChartNoAxesColumnIncreasing,
   ChevronsUpDown,
+  CircleHelp,
   GalleryVerticalEnd,
   Library,
   LogOut,
@@ -50,6 +51,7 @@ export type ShellUser = { name: string; email: string };
 const NAV = [
   { href: "/today", label: "Today", icon: Sunrise },
   { href: "/review", label: "Review", icon: GalleryVerticalEnd },
+  { href: "/quiz", label: "Quiz", icon: CircleHelp },
   { href: "/focus", label: "Focus", icon: Timer },
   { href: "/exams", label: "Exams", icon: CalendarClock },
   { href: "/progress", label: "Progress", icon: ChartNoAxesColumnIncreasing },

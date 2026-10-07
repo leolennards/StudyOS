@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { cache } from "react";
-import { ChevronLeft, GalleryVerticalEnd, ListPlus, Timer } from "lucide-react";
+import { ChevronLeft, CircleHelp, GalleryVerticalEnd, ListPlus, Timer } from "lucide-react";
 import { PageContainer, PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -55,7 +55,7 @@ export default async function ExamPage({ params }: PageProps<"/exams/[examId]">)
     subjectOptions.push({ id: exam.subject.id, name: exam.subject.name });
   }
   const standings: Record<string, TopicStanding> = Object.fromEntries(
-    exam.topics.map((t) => [t.topicId, { confidence: t.confidence, cards: t.cards, recall: t.recall }]),
+    exam.topics.map((t) => [t.topicId, { confidence: t.confidence, cards: t.cards, recall: t.recall, quiz: t.quiz }]),
   );
   const passed = exam.days < 0;
 
@@ -161,6 +161,12 @@ export default async function ExamPage({ params }: PageProps<"/exams/[examId]">)
                 <Link href={`/review?subject=${exam.subject.id}`}>
                   <GalleryVerticalEnd aria-hidden />
                   Review {exam.subject.name}
+                </Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href={`/quiz?exam=${exam.id}`}>
+                  <CircleHelp aria-hidden />
+                  Quiz me on it
                 </Link>
               </Button>
               <Button asChild variant="outline">

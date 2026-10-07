@@ -45,8 +45,9 @@ export const setDeadlineTopics = action(setDeadlineTopicsSchema, async (ctx, inp
 
 export const setTopicConfidence = action(setTopicConfidenceSchema, async (ctx, input) => {
   const result = await plannerService.setTopicConfidence(ctx, input);
-  // Confidence is shared by every exam that covers the topic.
+  // Confidence is shared by every exam that covers the topic, and shown beside quiz results.
   revalidatePath("/exams", "layout");
+  revalidatePath("/quiz", "layout");
   revalidatePath("/today");
   return result;
 });

@@ -5,6 +5,7 @@ import {
   cards,
   cardStates,
   cardTopics,
+  quizQuestions,
   studySessions,
   subjects,
   topics,
@@ -16,9 +17,9 @@ import { REVIEW_SECONDS_CAP } from "./domain/limits";
  * computed on the fly from what is already recorded: focus sessions and
  * flashcard ratings. Every query is scoped by workspace id.
  *
- * Study time is focus time plus time on flashcards. A rating made while a
- * focus session was running is already inside that session, so it adds no
- * time of its own, only activity.
+ * Study time is focus time plus time on flashcards and quiz questions. A
+ * rating or answer made while a focus session was running is already inside
+ * that session, so it adds no time of its own, only activity.
  */
 export type SessionInsert = typeof studySessions.$inferInsert;
 
@@ -28,6 +29,13 @@ const reviewSeconds = sql`case when exists (
     where focus.workspace_id = ${cardReviews.workspaceId}
       and ${cardReviews.reviewedAt} between focus.started_at and focus.ended_at
   ) then 0 else least(coalesce(${cardReviews.durationMs}, 0), ${REVIEW_SECONDS_CAP * 1000}) / 1000.0 end`;
+
+/** Seconds a quiz answer adds to the day, counted the same way as a rating. */
+const answerSeconds = sql`case when exists (
+    select 1 from ${studySessions} focus
+    where focus.workspace_id = ${quizQuestions.workspaceId}
+      and ${quizQuestions.answeredAt} between focus.started_at and focus.ended_at
+  ) then 0 else least(coalesce(${quizQuestions.durationMs}, 0), ${REVIEW_SECONDS_CAP * 1000}) / 1000.0 end`;
 
 const num = (v: unknown) => Number(v ?? 0);
 
@@ -55,27 +63,34 @@ export const progressRepository = {
   // ── study time ────────────────────────────────────────────────────────────
   /**
    * Study per local day in the zone, from `since` (all time if null): the
-   * seconds studied, the focus seconds among them, and how many ratings
-   * and sessions there were.
+   * seconds studied, the focus seconds among them, and how many ratings,
+   * sessions and quiz answers there were.
    */
   async dailyStudy(db: DbExecutor, ws: string, timeZone: string, since: Date | null) {
     const reviewSince = since ? sql`and ${cardReviews.reviewedAt} >= ${since}` : sql``;
     const sessionSince = since ? sql`and ${studySessions.startedAt} >= ${since}` : sql``;
+    const answerSince = since ? sql`and ${quizQuestions.answeredAt} >= ${since}` : sql``;
     const result = await db.execute(sql`
       select to_char(day, 'YYYY-MM-DD') as day,
              sum(seconds) as seconds, sum(focus_seconds) as focus_seconds,
-             sum(ratings) as ratings, sum(sessions) as sessions
+             sum(ratings) as ratings, sum(sessions) as sessions, sum(answers) as answers
       from (
         select (${cardReviews.reviewedAt} at time zone ${timeZone})::date as day,
-               sum(${reviewSeconds}) as seconds, 0 as focus_seconds, count(*) as ratings, 0 as sessions
+               sum(${reviewSeconds}) as seconds, 0 as focus_seconds, count(*) as ratings, 0 as sessions, 0 as answers
         from ${cardReviews}
         where ${cardReviews.workspaceId} = ${ws} ${reviewSince}
         group by 1
         union all
         select (${studySessions.startedAt} at time zone ${timeZone})::date,
-               sum(${studySessions.focusedSeconds}), sum(${studySessions.focusedSeconds}), 0, count(*)
+               sum(${studySessions.focusedSeconds}), sum(${studySessions.focusedSeconds}), 0, count(*), 0
         from ${studySessions}
         where ${studySessions.workspaceId} = ${ws} ${sessionSince}
+        group by 1
+        union all
+        select (${quizQuestions.answeredAt} at time zone ${timeZone})::date,
+               sum(${answerSeconds}), 0, 0, 0, count(*)
+        from ${quizQuestions}
+        where ${quizQuestions.workspaceId} = ${ws} and ${quizQuestions.answeredAt} is not null ${answerSince}
         group by 1
       ) days
       group by day
@@ -87,6 +102,7 @@ export const progressRepository = {
       focusSeconds: num(r.focus_seconds),
       ratings: num(r.ratings),
       sessions: num(r.sessions),
+      answers: num(r.answers),
     }));
   },
 
@@ -104,6 +120,12 @@ export const progressRepository = {
         from ${cardReviews}
         join ${cards} on ${cards.id} = ${cardReviews.cardId} and ${cards.workspaceId} = ${cardReviews.workspaceId}
         where ${cardReviews.workspaceId} = ${ws} and ${cardReviews.reviewedAt} >= ${since}
+        group by 1
+        union all
+        select ${cards.subjectId}, sum(${answerSeconds})
+        from ${quizQuestions}
+        join ${cards} on ${cards.id} = ${quizQuestions.cardId} and ${cards.workspaceId} = ${quizQuestions.workspaceId}
+        where ${quizQuestions.workspaceId} = ${ws} and ${quizQuestions.answeredAt} >= ${since}
         group by 1
       ) t
       left join ${subjects} s on s.id = t.subject_id and s.workspace_id = ${ws}
@@ -205,6 +227,31 @@ export const progressRepository = {
       cards: num(r.cards),
       ratings: num(r.ratings),
       forgot: num(r.forgot),
+    }));
+  },
+
+  /** For each of these topics, the quiz questions on its cards answered since `since`, and how many were right. */
+  async topicQuiz(db: DbExecutor, ws: string, q: { topicIds: string[]; since: Date }) {
+    if (q.topicIds.length === 0) return [];
+    const ids = sql.join(
+      q.topicIds.map((id) => sql`${id}::uuid`),
+      sql`, `,
+    );
+    const result = await db.execute(sql`
+      select ${cardTopics.topicId} as topic_id,
+             count(*) as answered,
+             count(*) filter (where ${quizQuestions.correct}) as correct
+      from ${quizQuestions}
+      join ${cardTopics} on ${cardTopics.cardId} = ${quizQuestions.cardId} and ${cardTopics.workspaceId} = ${ws}
+      where ${quizQuestions.workspaceId} = ${ws}
+        and ${quizQuestions.answeredAt} >= ${q.since}
+        and ${cardTopics.topicId} in (${ids})
+      group by ${cardTopics.topicId}
+    `);
+    return (result.rows as Record<string, unknown>[]).map((r) => ({
+      topicId: String(r.topic_id),
+      answered: num(r.answered),
+      correct: num(r.correct),
     }));
   },
 

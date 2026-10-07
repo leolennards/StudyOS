@@ -43,6 +43,13 @@
       "when": 1791391471782,
       "tag": "0005_planner",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791393766664,
+      "tag": "0006_quizzes",
+      "breakpoints": true
     }
   ]
 }

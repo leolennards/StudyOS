@@ -16,8 +16,8 @@ type In<S extends z.ZodType> = z.output<S>;
 /**
  * Progress module (Architecture §28, §29): focus sessions, the daily goal,
  * streaks and the student's learning analytics. Nothing here is stored
- * twice: every figure is computed from focus sessions and flashcard
- * ratings, so it is always consistent with what actually happened.
+ * twice: every figure is computed from focus sessions, flashcard ratings
+ * and quiz answers, so it is always consistent with what actually happened.
  */
 
 /** A focus session may end this far in the future, to allow for a browser clock that runs a little fast. */
@@ -36,7 +36,7 @@ async function studyDays(ctx: RequestContext, now: Date) {
   const today = dateKey(now, settings.timezone);
   const rows = await repo.dailyStudy(getDb(), ctx.workspaceId, settings.timezone, null);
   const byDay = new Map(rows.map((r) => [r.day, r]));
-  const active = rows.filter((r) => r.ratings + r.sessions > 0).map((r) => r.day);
+  const active = rows.filter((r) => r.ratings + r.sessions + r.answers > 0).map((r) => r.day);
   return { settings, today, byDay, ...streaks(active, today) };
 }
 
@@ -147,7 +147,7 @@ export const progressService = {
       streak: current,
       longestStreak: longest,
       studiedToday,
-      activeDays: [...byDay.values()].filter((r) => r.ratings + r.sessions > 0).length,
+      activeDays: [...byDay.values()].filter((r) => r.ratings + r.sessions + r.answers > 0).length,
       totalSeconds,
       lastWeek: {
         seconds: sumSeconds(addDays(today, -6), today),
@@ -170,13 +170,18 @@ export const progressService = {
   },
 
   /**
-   * Per topic, for planning: its active flashcards, and the share of
-   * reviews remembered over the last month (null with too few to say).
-   * Topics without cards are left out.
+   * Per topic, for planning: its active flashcards, the share of reviews
+   * remembered over the last month (null with too few to say), and its quiz
+   * answers over the same month (null with none). Topics without cards are left out.
    */
   async getTopicStudy(ctx: RequestContext, topicIds: string[], now = new Date()) {
     const since = new Date(now.getTime() - INSIGHT_WINDOW_DAYS * 86_400_000);
-    const rows = await repo.topicStudy(getDb(), ctx.workspaceId, { topicIds, since });
+    const db = getDb();
+    const [rows, quiz] = await Promise.all([
+      repo.topicStudy(db, ctx.workspaceId, { topicIds, since }),
+      repo.topicQuiz(db, ctx.workspaceId, { topicIds, since }),
+    ]);
+    const quizBy = new Map(quiz.map((r) => [r.topicId, { answered: r.answered, correct: r.correct }]));
     return new Map(
       rows.map((r) => [
         r.topicId,
@@ -184,6 +189,7 @@ export const progressService = {
           cards: r.cards,
           ratings: r.ratings,
           recall: r.ratings >= WEAK_TOPIC_MIN_RATINGS ? 1 - r.forgot / r.ratings : null,
+          quiz: quizBy.get(r.topicId) ?? null,
         },
       ]),
     );

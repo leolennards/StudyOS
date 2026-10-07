@@ -9,10 +9,12 @@ subject → sections → topics knowledge structure, the application shell and
 settings, documents (upload PDFs, Word files, slides, text and images; text
 extraction with OCR for scanned pages; a viewer; linking documents to topics),
 notes (a rich-text editor with LaTeX maths, autosave and a trash), keyword
-search across all of it (⌘K), and flashcards with spaced-repetition review
-(basic, reversed and cloze cards, scheduled with FSRS) are built and tested. AI,
-quizzes, past papers and the planner are designed but not implemented — see
-`CURRENT STATUS.md` in the project documentation for what exists and what does
+search across all of it (⌘K), flashcards with spaced-repetition review
+(basic, reversed and cloze cards, scheduled with FSRS), a daily goal, streaks, a
+focus timer and a progress page, exam dates with a topic confidence checklist,
+and practice quizzes made from flashcards are built and tested. AI (including
+generated quizzes), past papers and generated study plans are designed but not
+implemented — see `CURRENT STATUS.md` in the project documentation for what exists and what does
 not.
 
 ## Architecture in one paragraph

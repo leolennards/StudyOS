@@ -279,6 +279,31 @@ export const flashcardsRepository = {
       .limit(limit);
   },
 
+  /** Up to `limit` items in a scope, in random order, for building a quiz. */
+  quizItems(db: DbExecutor, ws: string, scope: Scope, limit: number) {
+    return itemsQuery(db, ws, scope, undefined)
+      .orderBy(sql`random()`)
+      .limit(limit);
+  },
+
+  /** The items of these cards, as `quizItems` returns them. */
+  quizItemsOf(db: DbExecutor, ws: string, scope: Scope, cardIds: string[], limit: number) {
+    if (cardIds.length === 0) return Promise.resolve([]);
+    return itemsQuery(db, ws, scope, inArray(cards.id, cardIds))
+      .orderBy(sql`random()`)
+      .limit(limit);
+  },
+
+  /** The cards linked to any of these topics. */
+  async cardIdsForTopics(db: DbExecutor, ws: string, topicIds: string[]) {
+    if (topicIds.length === 0) return [];
+    const rows = await db
+      .selectDistinct({ cardId: cardTopics.cardId })
+      .from(cardTopics)
+      .where(and(eq(cardTopics.workspaceId, ws), inArray(cardTopics.topicId, topicIds)));
+    return rows.map((r) => r.cardId);
+  },
+
   /** Counts for a scope: new items, items due today, and items still in their learning steps. */
   async countItems(db: DbExecutor, ws: string, scope: Scope, opts: { learningCutoff: Date; reviewCutoff: Date }) {
     const [row] = await db
