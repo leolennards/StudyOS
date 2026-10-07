@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 
 /** Tabs across a subject's pages, styled like the subject list's filter. */
@@ -10,13 +11,22 @@ export function SubjectTabs({
   noteCount,
   documentCount,
   cardCount,
+  paperCount,
 }: {
   subjectId: string;
   noteCount: number;
   documentCount: number;
   cardCount: number;
+  paperCount: number;
 }) {
   const pathname = usePathname();
+  const nav = useRef<HTMLElement>(null);
+  // On a narrow screen the tabs scroll sideways: keep the current one in view.
+  useEffect(() => {
+    nav.current
+      ?.querySelector<HTMLElement>('[aria-current="page"]')
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [pathname]);
   const base = `/subjects/${subjectId}`;
   const tabs = [
     { href: base, label: "Structure", current: pathname === base },
@@ -38,9 +48,15 @@ export function SubjectTabs({
       count: cardCount,
       current: pathname.startsWith(`${base}/flashcards`),
     },
+    {
+      href: `${base}/papers`,
+      label: "Past papers",
+      count: paperCount,
+      current: pathname.startsWith(`${base}/papers`),
+    },
   ];
   return (
-    <nav aria-label="Subject sections" className="mt-8 flex gap-1 overflow-x-auto border-b">
+    <nav ref={nav} aria-label="Subject sections" className="mt-8 flex gap-1 overflow-x-auto border-b">
       {tabs.map((tab) => (
         <Link
           key={tab.href}

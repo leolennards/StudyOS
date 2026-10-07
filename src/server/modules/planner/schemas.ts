@@ -15,7 +15,7 @@ const optionalText = (max: number) =>
     .optional();
 
 /** A calendar date, "YYYY-MM-DD", that really exists. */
-const calendarDate = z
+export const calendarDate = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a date")
   .refine((v) => {

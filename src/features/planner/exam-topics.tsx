@@ -15,19 +15,22 @@ export type TopicStanding = {
   cards: number;
   recall: number | null;
   quiz: { answered: number; correct: number } | null;
+  /** Share of the topic's marks gained in past papers, or null if none has been marked. */
+  paperScore: number | null;
 };
 
 function studyLine(s: TopicStanding | undefined) {
-  if (!s || s.cards === 0) return "No flashcards yet";
-  const parts = [`${s.cards} card${s.cards === 1 ? "" : "s"}`];
-  if (s.recall !== null) parts.push(`${Math.round(s.recall * 100)}% remembered this month`);
+  if (!s) return "No flashcards yet";
+  const parts = [s.cards === 0 ? "No flashcards yet" : `${s.cards} card${s.cards === 1 ? "" : "s"}`];
+  if (s.cards > 0 && s.recall !== null) parts.push(`${Math.round(s.recall * 100)}% remembered this month`);
   if (s.quiz && s.quiz.answered > 0) parts.push(`quizzes ${s.quiz.correct} of ${s.quiz.answered} right`);
+  if (s.paperScore !== null) parts.push(`${Math.round(s.paperScore * 100)}% of past-paper marks`);
   return parts.join(" · ");
 }
 
 /**
  * The exam's topic checklist: each covered topic with the student's
- * confidence and their flashcard recall, grouped by section.
+ * confidence, their flashcard recall, quiz and past-paper results, grouped by section.
  */
 export function ExamTopics({
   deadlineId,
