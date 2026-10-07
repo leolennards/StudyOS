@@ -3,4 +3,5 @@ node_modules
 pnpm-lock.yaml
 src/server/platform/db/migrations
 public/pdfjs
+public/sqljs
 .data

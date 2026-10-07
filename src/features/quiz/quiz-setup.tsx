@@ -3,10 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Play } from "lucide-react";
+import { ChoiceGroup } from "@/components/shared/choice-group";
 import { Button } from "@/components/ui/button";
 import { useAction } from "@/features/knowledge/use-action";
 import { selectClass } from "@/features/planner/deadline-form-dialog";
-import { cn } from "@/lib/utils";
 import { startQuiz } from "@/server/actions/assessment";
 import {
   QUIZ_FORMAT_LABELS,
@@ -70,14 +70,14 @@ export function QuizSetup({ sources, defaultSource }: { sources: QuizSource[]; d
         </select>
       </div>
 
-      <Choice
+      <ChoiceGroup
         legend="Questions"
         name="quiz-count"
         value={String(count)}
         onChange={(v) => setCount(Number(v))}
         options={QUIZ_LENGTHS.map((n) => ({ value: String(n), label: String(n) }))}
       />
-      <Choice
+      <ChoiceGroup
         legend="Answer by"
         name="quiz-format"
         value={format}
@@ -92,47 +92,5 @@ export function QuizSetup({ sources, defaultSource }: { sources: QuizSource[]; d
         </Button>
       </div>
     </form>
-  );
-}
-
-function Choice({
-  legend,
-  name,
-  value,
-  onChange,
-  options,
-}: {
-  legend: string;
-  name: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: { value: string; label: string }[];
-}) {
-  return (
-    <fieldset className="grid gap-2">
-      <legend className="mb-2 text-sm font-medium">{legend}</legend>
-      <div className="grid grid-cols-3 gap-2">
-        {options.map((o) => (
-          <label key={o.value} className="cursor-pointer">
-            <input
-              type="radio"
-              name={name}
-              value={o.value}
-              checked={value === o.value}
-              onChange={() => onChange(o.value)}
-              className="peer sr-only"
-            />
-            <span
-              className={cn(
-                "peer-focus-visible:ring-ring/50 flex min-h-9 items-center justify-center rounded-md border px-2 py-1.5 text-center text-sm font-medium transition-colors peer-focus-visible:ring-[3px]",
-                value === o.value ? "border-primary bg-primary/10 text-primary" : "hover:bg-accent",
-              )}
-            >
-              {o.label}
-            </span>
-          </label>
-        ))}
-      </div>
-    </fieldset>
   );
 }

@@ -6,6 +6,8 @@ import { flashcardsService } from "@/server/modules/flashcards/service";
 import {
   cardIdSchema,
   createCardSchema,
+  importCardsSchema,
+  importIdSchema,
   reviewCardSchema,
   reviewScopeSchema,
   setCardSuspendedSchema,
@@ -43,6 +45,27 @@ export const setCardSuspended = action(setCardSuspendedSchema, async (ctx, input
 export const deleteCard = action(cardIdSchema, async (ctx, input) => {
   const result = await flashcardsService.deleteCard(ctx, input);
   refresh(result.subjectId);
+  return result;
+});
+
+/**
+ * One batch of an import. Pages are refreshed once the import page has sent
+ * every batch, by `finishImport`, not after each one.
+ */
+export const importCards = action(importCardsSchema, (ctx, input) => flashcardsService.importCards(ctx, input));
+
+/** Called when every batch of an import is in, so the subject's pages show the new cards. */
+export const finishImport = action(importIdSchema, async (ctx, input) => {
+  const found = await flashcardsService.getImport(ctx, input);
+  refresh(found.subjectId);
+  revalidatePath("/quiz");
+  return { id: found.id };
+});
+
+export const deleteImport = action(importIdSchema, async (ctx, input) => {
+  const result = await flashcardsService.deleteImport(ctx, input);
+  refresh(result.subjectId);
+  revalidatePath("/quiz");
   return result;
 });
 

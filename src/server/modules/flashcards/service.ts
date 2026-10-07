@@ -9,6 +9,7 @@ import { libraryService } from "@/server/modules/library/service";
 import { notesService } from "@/server/modules/notes/service";
 import { settingsService } from "@/server/modules/settings/service";
 import { endOfDay, startOfDay } from "./domain/day";
+import { cardKey, type ImportSource } from "./domain/import";
 import { cardOrdinals, cardPreview, cardProblem, type CardType, itemLabel } from "./domain/items";
 import { CARD_LIST_MAX, LEARN_AHEAD_MINUTES, REVIEW_BATCH } from "./domain/limits";
 import { orderQueue } from "./domain/queue";
@@ -24,6 +25,8 @@ import { flashcardsRepository as repo, type Scope, type StateRow } from "./repos
 import type {
   cardIdSchema,
   createCardSchema,
+  importCardsSchema,
+  importIdSchema,
   reviewCardSchema,
   reviewScopeSchema,
   setCardSuspendedSchema,
@@ -378,6 +381,104 @@ export const flashcardsService = {
     const card = await requireCard(ctx, input.id);
     await repo.deleteCard(getDb(), ctx.workspaceId, card.id);
     return { id: card.id, subjectId: card.subjectId };
+  },
+
+  // ── imports ───────────────────────────────────────────────────────────────
+  /**
+   * Adds one batch of imported cards to a subject (ADR-018). Each card is
+   * checked as if written by hand; cards the subject already has, with the
+   * same front and back, are skipped, so sending a batch again after a dropped
+   * connection adds nothing twice. Imported cards start new, in file order.
+   */
+  async importCards(ctx: RequestContext, input: In<typeof importCardsSchema>, now = new Date()) {
+    assertCanWrite(ctx);
+    await knowledgeService.getSubject(ctx, input.subjectId);
+    const topicIds = await checkTopics(ctx, input.subjectId, input.topicId ? [input.topicId] : []);
+    return withTransaction(async (tx) => {
+      const created = await repo.insertImport(tx, {
+        id: input.importId,
+        workspaceId: ctx.workspaceId,
+        subjectId: input.subjectId,
+        source: input.source,
+        name: input.name,
+        createdAt: now,
+      });
+      if (!created) {
+        const existing = await repo.findImport(tx, ctx.workspaceId, input.importId);
+        if (!existing || existing.subjectId !== input.subjectId) throw new AppError("CONFLICT");
+      }
+
+      let invalid = 0;
+      const valid = [];
+      for (const card of input.cards) {
+        const content = { type: card.type, front: card.front.trim(), back: card.back.trim() };
+        if (cardProblem(content)) invalid += 1;
+        else valid.push(content);
+      }
+      const have = await repo.existingCards(
+        tx,
+        ctx.workspaceId,
+        input.subjectId,
+        valid.map((c) => c.front),
+      );
+      const seen = new Set(have.map(cardKey));
+      const fresh = valid.filter((c) => {
+        const key = cardKey(c);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      const state = newMemoryState(now);
+      await repo.insertImportedCards(
+        tx,
+        fresh.map((content, i) => {
+          const id = newId();
+          return {
+            card: {
+              id,
+              workspaceId: ctx.workspaceId,
+              subjectId: input.subjectId,
+              ...content,
+              origin: "imported" as const,
+              importId: input.importId,
+              // A millisecond apart, so the cards are introduced for review in the file's order.
+              createdAt: new Date(now.getTime() - (fresh.length - i)),
+            },
+            states: cardOrdinals(content).map((ordinal) => ({
+              workspaceId: ctx.workspaceId,
+              cardId: id,
+              ordinal,
+              ...state,
+            })),
+            topicIds,
+          };
+        }),
+      );
+      return { added: fresh.length, duplicates: valid.length - fresh.length, invalid };
+    });
+  },
+
+  /** A subject's imports that still have cards, newest first. */
+  async listImports(ctx: RequestContext, subjectId: string) {
+    await knowledgeService.getSubject(ctx, subjectId);
+    const rows = await repo.listImports(getDb(), ctx.workspaceId, subjectId);
+    return rows.map((r) => ({ ...r, source: r.source as ImportSource }));
+  },
+
+  async getImport(ctx: RequestContext, input: In<typeof importIdSchema>) {
+    const found = await repo.findImport(getDb(), ctx.workspaceId, input.id);
+    if (!found) throw notFound("That import");
+    return { id: found.id, subjectId: found.subjectId, name: found.name, source: found.source as ImportSource };
+  },
+
+  /** Takes an import back: deletes every card it added, with their review history. */
+  async deleteImport(ctx: RequestContext, input: In<typeof importIdSchema>) {
+    assertCanWrite(ctx);
+    const found = await repo.findImport(getDb(), ctx.workspaceId, input.id);
+    if (!found) throw notFound("That import");
+    await repo.deleteImport(getDb(), ctx.workspaceId, found.id);
+    return { id: found.id, subjectId: found.subjectId };
   },
 
   // ── review ────────────────────────────────────────────────────────────────

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 /**
  * The PDF viewer (Architecture §3): pdf.js, rendering each page to a canvas
  * as it scrolls into view. pdf.js never runs a PDF's own scripts. Its worker
- * and data files are served from this origin (scripts/copy-pdfjs-assets.mjs).
+ * and data files are served from this origin (scripts/copy-browser-assets.mjs).
  */
 const ASSETS = "/pdfjs";
 const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { FileText, Layers, MoreHorizontal, NotebookPen, Pause, Pencil, Play, Plus, Trash2 } from "lucide-react";
+import { FileText, FileUp, Layers, MoreHorizontal, NotebookPen, Pause, Pencil, Play, Plus, Trash2 } from "lucide-react";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -73,6 +73,7 @@ export function FlashcardsPanel({
     }
   }
 
+  const importHref = `/subjects/${subjectId}/flashcards/import`;
   const newCard = () => setDialog({ mode: "create", draft: { topicIds: topicFilter ? [topicFilter] : [] } });
 
   return (
@@ -94,21 +95,35 @@ export function FlashcardsPanel({
           <EmptyState
             icon={<Layers />}
             title="No flashcards yet"
-            description="Write cards for what you need to remember. StudyOS schedules each one with spaced repetition, so you review it just before you'd forget it."
+            description="Write cards for what you need to remember, or bring in the ones you have from Anki, Quizlet or a spreadsheet. StudyOS schedules each one with spaced repetition, so you review it just before you'd forget it."
             action={
-              <Button onClick={newCard}>
-                <Plus aria-hidden />
-                New card
-              </Button>
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button onClick={newCard}>
+                  <Plus aria-hidden />
+                  New card
+                </Button>
+                <Button asChild variant="outline">
+                  <Link href={importHref}>
+                    <FileUp aria-hidden />
+                    Import cards
+                  </Link>
+                </Button>
+              </div>
             }
           />
         )
       ) : (
         <div className="grid gap-3">
-          <div>
+          <div className="flex flex-wrap gap-2">
             <Button onClick={newCard}>
               <Plus aria-hidden />
               New card
+            </Button>
+            <Button asChild variant="outline">
+              <Link href={importHref}>
+                <FileUp aria-hidden />
+                Import
+              </Link>
             </Button>
           </div>
           <ul aria-label="Flashcards" className="bg-card divide-y overflow-hidden rounded-xl border">

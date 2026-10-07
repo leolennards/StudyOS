@@ -1,6 +1,6 @@
 import { and, asc, count, desc, eq, gte, inArray, isNull, lte, ne, notInArray, or, sql, type SQL } from "drizzle-orm";
 import type { DbExecutor } from "@/server/platform/db/client";
-import { cardReviews, cards, cardStates, cardTopics, subjects } from "@/server/platform/db/schema";
+import { cardImports, cardReviews, cards, cardStates, cardTopics, subjects } from "@/server/platform/db/schema";
 import { HEADLINE_OPTIONS } from "@/server/lib/search-query";
 import type { MemoryState } from "./domain/scheduler";
 
@@ -11,6 +11,12 @@ import type { MemoryState } from "./domain/scheduler";
 export type CardRow = typeof cards.$inferSelect;
 export type CardInsert = typeof cards.$inferInsert;
 export type StateRow = typeof cardStates.$inferSelect;
+type StateInsert = typeof cardStates.$inferInsert;
+
+/** Inserts in slices, keeping each statement well under Postgres's limit of 65,535 parameters. */
+async function insertInChunks<T>(rows: T[], size: number, insert: (chunk: T[]) => Promise<unknown>) {
+  for (let i = 0; i < rows.length; i += size) await insert(rows.slice(i, i + size));
+}
 
 const byId = (ws: string, id: string) => and(eq(cards.id, id), eq(cards.workspaceId, ws));
 
@@ -120,6 +126,75 @@ export const flashcardsRepository = {
       .from(cards)
       .where(and(eq(cards.workspaceId, ws), subjectId ? eq(cards.subjectId, subjectId) : undefined));
     return row?.n ?? 0;
+  },
+
+  // ── imports ───────────────────────────────────────────────────────────────
+  /** Records an import; false when its id is already taken. */
+  async insertImport(db: DbExecutor, row: typeof cardImports.$inferInsert) {
+    const rows = await db.insert(cardImports).values(row).onConflictDoNothing().returning({ id: cardImports.id });
+    return rows.length > 0;
+  },
+
+  async findImport(db: DbExecutor, ws: string, id: string) {
+    const rows = await db
+      .select()
+      .from(cardImports)
+      .where(and(eq(cardImports.workspaceId, ws), eq(cardImports.id, id)))
+      .limit(1);
+    return rows[0] ?? null;
+  },
+
+  /** The subject's cards whose front is one of these, to tell which imported cards it already has. */
+  existingCards(db: DbExecutor, ws: string, subjectId: string, fronts: string[]) {
+    if (fronts.length === 0) return Promise.resolve([]);
+    return db
+      .select({ front: cards.front, back: cards.back })
+      .from(cards)
+      .where(and(eq(cards.workspaceId, ws), eq(cards.subjectId, subjectId), inArray(cards.front, fronts)));
+  },
+
+  /** Adds imported cards with their items and topic links. */
+  async insertImportedCards(db: DbExecutor, rows: { card: CardInsert; states: StateInsert[]; topicIds: string[] }[]) {
+    await insertInChunks(rows, 500, (chunk) => db.insert(cards).values(chunk.map((r) => r.card)));
+    await insertInChunks(
+      rows.flatMap((r) => r.states),
+      2_000,
+      (chunk) => db.insert(cardStates).values(chunk),
+    );
+    const links = rows.flatMap((r) =>
+      r.topicIds.map((topicId) => ({ workspaceId: r.card.workspaceId, cardId: r.card.id, topicId })),
+    );
+    await insertInChunks(links, 5_000, (chunk) => db.insert(cardTopics).values(chunk));
+  },
+
+  /** A subject's imports, newest first, with how many of their cards are left and how many were reviewed. */
+  listImports(db: DbExecutor, ws: string, subjectId: string) {
+    return db
+      .select({
+        id: cardImports.id,
+        source: cardImports.source,
+        name: cardImports.name,
+        createdAt: cardImports.createdAt,
+        cards: count(cards.id),
+        reviewed:
+          sql<number>`count(${cards.id}) filter (where exists (select 1 from ${cardReviews} where ${cardReviews.cardId} = ${cards.id} and ${cardReviews.workspaceId} = ${ws}))`.mapWith(
+            Number,
+          ),
+      })
+      .from(cardImports)
+      .innerJoin(cards, and(eq(cards.workspaceId, cardImports.workspaceId), eq(cards.importId, cardImports.id)))
+      .where(and(eq(cardImports.workspaceId, ws), eq(cardImports.subjectId, subjectId)))
+      .groupBy(cardImports.id)
+      .orderBy(desc(cardImports.createdAt));
+  },
+
+  /** Deletes an import, and with it the cards it added. */
+  async deleteImport(db: DbExecutor, ws: string, id: string) {
+    const rows = await db
+      .delete(cardImports)
+      .where(and(eq(cardImports.workspaceId, ws), eq(cardImports.id, id)))
+      .returning({ id: cardImports.id });
+    return rows.length > 0;
   },
 
   // ── topics ────────────────────────────────────────────────────────────────

@@ -8,6 +8,7 @@ node_modules
 .next
 .data
 public/pdfjs
+public/sqljs
 test-results
 playwright-report
 coverage
