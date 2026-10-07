@@ -13,9 +13,11 @@ import { progressService } from "@/server/modules/progress/service";
 export const metadata: Metadata = { title: "Focus" };
 
 /** The focus timer (Architecture §28): timed blocks of study with short breaks, counted towards the daily goal. */
-export default async function FocusPage() {
+export default async function FocusPage({ searchParams }: PageProps<"/focus">) {
+  const { subject } = await searchParams;
   const { ctx } = await requirePageSession();
   const [subjects, habits] = await Promise.all([knowledgeService.listSubjects(ctx), progressService.getHabits(ctx)]);
+  const suggestedSubjectId = typeof subject === "string" && subjects.some((s) => s.id === subject) ? subject : null;
 
   return (
     <PageContainer className="max-w-4xl">
@@ -24,7 +26,10 @@ export default async function FocusPage() {
         description="Study in focused blocks with short breaks in between. Focus time counts towards your daily goal."
       />
       <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_17rem]">
-        <FocusPanel subjects={subjects.map((s) => ({ id: s.id, name: s.name }))} />
+        <FocusPanel
+          subjects={subjects.map((s) => ({ id: s.id, name: s.name }))}
+          suggestedSubjectId={suggestedSubjectId}
+        />
         <div className="grid content-start gap-6">
           <Card>
             <CardHeader>

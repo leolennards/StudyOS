@@ -1,10 +1,11 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { ArrowRight, Check, Circle, GalleryVerticalEnd } from "lucide-react";
+import { ArrowRight, CalendarClock, Check, Circle, GalleryVerticalEnd } from "lucide-react";
 import { PageContainer, PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { NewSubjectButton } from "@/features/knowledge/new-subject-button";
+import { NextExamCard } from "@/features/planner/next-exam-card";
 import { HabitsCard } from "@/features/progress/habits-card";
 import { SubjectDot } from "@/features/knowledge/subject-dot";
 import { cn } from "@/lib/utils";
@@ -13,6 +14,7 @@ import { knowledgeService } from "@/server/modules/knowledge/service";
 import { formatInterval } from "@/server/modules/flashcards/domain/scheduler";
 import { flashcardsService } from "@/server/modules/flashcards/service";
 import { libraryService } from "@/server/modules/library/service";
+import { plannerService } from "@/server/modules/planner/service";
 import { progressService } from "@/server/modules/progress/service";
 import { settingsService } from "@/server/modules/settings/service";
 
@@ -30,13 +32,14 @@ function greeting(timezone: string) {
 export default async function TodayPage() {
   const { user, ctx } = await requirePageSession();
   const now = new Date();
-  const [subjects, settings, documentCount, review, habits, waitingBySubject] = await Promise.all([
+  const [subjects, settings, documentCount, review, habits, waitingBySubject, nextExam] = await Promise.all([
     knowledgeService.listSubjects(ctx),
     settingsService.get(ctx),
     libraryService.countDocuments(ctx),
     flashcardsService.getOverview(ctx, {}, now),
     progressService.getHabits(ctx, now),
     flashcardsService.getSubjectCounts(ctx, now),
+    plannerService.getNextDeadline(ctx, now),
   ]);
   const firstName = user.name.split(/\s+/)[0];
   const date = new Intl.DateTimeFormat("en-GB", {
@@ -84,6 +87,12 @@ export default async function TodayPage() {
       <div className="mt-8">
         <HabitsCard habits={habits} />
       </div>
+
+      {nextExam && (
+        <div className="mt-6">
+          <NextExamCard exam={nextExam} today={habits.today} />
+        </div>
+      )}
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_20rem]">
         <Card>
@@ -153,6 +162,25 @@ export default async function TodayPage() {
                   </Button>
                 </CardContent>
               )}
+            </Card>
+          )}
+
+          {!nextExam && subjects.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  <h2>Exams</h2>
+                </CardTitle>
+                <CardDescription>Add your exam dates to count down to them here.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button asChild variant="outline" className="w-full">
+                  <Link href="/exams?new=1">
+                    <CalendarClock aria-hidden />
+                    Add an exam
+                  </Link>
+                </Button>
+              </CardContent>
             </Card>
           )}
 

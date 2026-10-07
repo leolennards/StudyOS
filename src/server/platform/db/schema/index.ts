@@ -6,3 +6,4 @@ export * from "./library";
 export * from "./notes";
 export * from "./flashcards";
 export * from "./progress";
+export * from "./planner";
