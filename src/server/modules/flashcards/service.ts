@@ -278,6 +278,35 @@ export const flashcardsService = {
     );
   },
 
+  /**
+   * What a quiz can be built from (ADR-017): `candidates`, the items it may
+   * ask, and `pool`, the items of the same subjects whose answers can serve
+   * as wrong options. With `topicIds` (or `cardIds`) the candidates are
+   * narrowed to those topics' (or cards') items; the pool is still the subject.
+   * Suspended cards are left out, as in review.
+   */
+  async getQuizItems(
+    ctx: RequestContext,
+    input: { subjectId?: string; topicIds?: string[]; cardIds?: string[] },
+    limit: number,
+  ) {
+    const scope = await checkScope(ctx, { subjectId: input.subjectId });
+    const db = getDb();
+    const toItem = (i: Awaited<ReturnType<typeof repo.quizItems>>[number]) => ({
+      cardId: i.cardId,
+      ordinal: i.ordinal,
+      subjectId: i.subjectId,
+      type: i.type,
+      front: i.front,
+      back: i.back,
+    });
+    const pool = (await repo.quizItems(db, ctx.workspaceId, scope, limit)).map(toItem);
+    if (!input.topicIds && !input.cardIds) return { pool, candidates: pool };
+    const cardIds = input.cardIds ?? (await repo.cardIdsForTopics(db, ctx.workspaceId, input.topicIds ?? []));
+    const candidates = (await repo.quizItemsOf(db, ctx.workspaceId, scope, cardIds, limit)).map(toItem);
+    return { pool, candidates };
+  },
+
   async countCards(ctx: RequestContext, subjectId?: string) {
     return repo.countCards(getDb(), ctx.workspaceId, subjectId);
   },

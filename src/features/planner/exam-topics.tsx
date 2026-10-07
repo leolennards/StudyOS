@@ -10,12 +10,19 @@ import type { ConfidenceLevel } from "@/server/modules/planner/domain/exams";
 import { ConfidencePicker } from "./confidence-picker";
 import { TopicsPickerDialog } from "./topics-picker-dialog";
 
-export type TopicStanding = { confidence: ConfidenceLevel | null; cards: number; recall: number | null };
+export type TopicStanding = {
+  confidence: ConfidenceLevel | null;
+  cards: number;
+  recall: number | null;
+  quiz: { answered: number; correct: number } | null;
+};
 
 function studyLine(s: TopicStanding | undefined) {
   if (!s || s.cards === 0) return "No flashcards yet";
-  const cards = `${s.cards} card${s.cards === 1 ? "" : "s"}`;
-  return s.recall === null ? cards : `${cards} · ${Math.round(s.recall * 100)}% remembered this month`;
+  const parts = [`${s.cards} card${s.cards === 1 ? "" : "s"}`];
+  if (s.recall !== null) parts.push(`${Math.round(s.recall * 100)}% remembered this month`);
+  if (s.quiz && s.quiz.answered > 0) parts.push(`quizzes ${s.quiz.correct} of ${s.quiz.answered} right`);
+  return parts.join(" · ");
 }
 
 /**

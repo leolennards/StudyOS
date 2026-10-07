@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, GalleryVerticalEnd, Timer } from "lucide-react";
+import { ArrowRight, CircleHelp, GalleryVerticalEnd, Timer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SubjectDot } from "@/features/knowledge/subject-dot";
@@ -97,6 +97,12 @@ export function NextExamCard({ exam, today }: { exam: NextExam; today: string })
                 <Link href={`/review?subject=${exam.subject.id}`}>
                   <GalleryVerticalEnd aria-hidden />
                   Review {exam.subject.name}
+                </Link>
+              </Button>
+              <Button asChild size="sm" variant="outline">
+                <Link href={`/quiz?exam=${exam.id}`}>
+                  <CircleHelp aria-hidden />
+                  Quiz
                 </Link>
               </Button>
               <Button asChild size="sm" variant="outline">

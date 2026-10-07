@@ -83,7 +83,7 @@ function assertSensibleDate(dueOn: string, todayKey: string) {
   }
 }
 
-/** Confidence and recent recall for each covered topic, in the order to work on them. */
+/** Confidence, recent recall and recent quiz results for each covered topic. */
 async function topicStandings(
   ctx: RequestContext,
   topics: { topicId: string; topicName: string; level: number | null }[],
@@ -94,13 +94,20 @@ async function topicStandings(
     topics.map((t) => t.topicId),
     now,
   );
-  return topics.map((t) => ({
-    topicId: t.topicId,
-    name: t.topicName,
-    confidence: t.level as ConfidenceLevel | null,
-    cards: study.get(t.topicId)?.cards ?? 0,
-    recall: study.get(t.topicId)?.recall ?? null,
-  }));
+  return topics.map((t) => {
+    const s = study.get(t.topicId);
+    const quiz = s?.quiz ?? null;
+    return {
+      topicId: t.topicId,
+      name: t.topicName,
+      confidence: t.level as ConfidenceLevel | null,
+      cards: s?.cards ?? 0,
+      recall: s?.recall ?? null,
+      /** Quiz questions on the topic answered in the last month, and how many were right. */
+      quiz,
+      quizScore: quiz && quiz.answered > 0 ? quiz.correct / quiz.answered : null,
+    };
+  });
 }
 
 export const plannerService = {
@@ -153,6 +160,31 @@ export const plannerService = {
       readiness: readiness(topics.map((t) => t.confidence)),
       workOn: workOrder(topics.filter((t) => t.confidence !== 3)).slice(0, 5),
       tree: tree ? { sections: tree.sections, unsectioned: tree.unsectioned, topicCount: tree.topicCount } : null,
+    };
+  },
+
+  /** How confident the student is in each of these topics; unrated topics are left out. */
+  async getConfidence(ctx: RequestContext, topicIds: string[]) {
+    const rows = await repo.confidenceFor(getDb(), ctx.workspaceId, topicIds);
+    return new Map(rows.map((r) => [r.topicId, r.level as ConfidenceLevel]));
+  },
+
+  /** What an exam covers, for building a quiz on it: its subject and the topics it covers. */
+  async getDeadlineScope(ctx: RequestContext, id: string) {
+    const row = await requireDeadline(ctx, id);
+    const db = getDb();
+    const [picked, covered] = await Promise.all([
+      repo.listPickedTopics(db, ctx.workspaceId, id),
+      repo.coveredTopics(db, ctx.workspaceId, [id]),
+    ]);
+    return {
+      id: row.id,
+      title: row.title,
+      kind: row.kind as DeadlineKind,
+      subjectId: row.subjectId,
+      /** True when the exam covers its whole subject, so every card in it counts, linked to a topic or not. */
+      coversWholeSubject: picked.length === 0,
+      topicIds: covered.map((c) => c.topicId),
     };
   },
 

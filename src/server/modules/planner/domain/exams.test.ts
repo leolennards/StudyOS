@@ -54,6 +54,15 @@ describe("workOrder", () => {
     ]);
   });
 
+  it("counts a poor quiz score like poor recall", () => {
+    const order = workOrder([
+      { topicId: "good", confidence: 2, recall: 0.9, quizScore: 1 },
+      { topicId: "quiz-poor", confidence: 2, recall: null, quizScore: 0.25 },
+      { topicId: "recall-poor", confidence: 2, recall: 0.5, quizScore: 0.9 },
+    ]);
+    expect(order.map((t) => t.topicId)).toEqual(["quiz-poor", "recall-poor", "good"]);
+  });
+
   it("keeps the original order for ties", () => {
     const order = workOrder([
       { topicId: "a", confidence: 2, recall: null },

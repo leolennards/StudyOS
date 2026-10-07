@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { GalleryVerticalEnd } from "lucide-react";
+import { CircleHelp, GalleryVerticalEnd } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FlashcardsPanel } from "@/features/flashcards/flashcards-panel";
 import { TopicFilter } from "@/features/flashcards/topic-filter";
@@ -38,6 +38,7 @@ export default async function SubjectFlashcardsPage({
   ]);
   const waiting = overview.due + overview.new;
   const reviewHref = `/review?subject=${subjectId}${topicId ? `&topic=${topicId}` : ""}`;
+  const quizHref = topicId ? `/quiz?topic=${topicId}` : `/quiz?subject=${subjectId}`;
 
   return (
     <div className="grid gap-6">
@@ -61,6 +62,14 @@ export default async function SubjectFlashcardsPage({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <TopicFilter groups={groups} value={topicId ?? null} />
+            {cards.length > 0 && (
+              <Button asChild variant={waiting > 0 ? "outline" : "default"}>
+                <Link href={quizHref}>
+                  <CircleHelp aria-hidden />
+                  Quiz
+                </Link>
+              </Button>
+            )}
             {waiting > 0 && (
               <Button asChild>
                 <Link href={reviewHref}>
