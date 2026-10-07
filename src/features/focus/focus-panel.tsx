@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Coffee, Pause, Play, Square, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -15,12 +15,26 @@ const selectClass =
 /**
  * The focus timer's controls (Architecture §28): choose a subject and a
  * length, then work in a timed block followed by a short break. Space
- * pauses and resumes.
+ * pauses and resumes. A link can suggest a subject (`?subject=`), which is
+ * chosen if the timer isn't already running.
  */
-export function FocusPanel({ subjects }: { subjects: { id: string; name: string }[] }) {
+export function FocusPanel({
+  subjects,
+  suggestedSubjectId,
+}: {
+  subjects: { id: string; name: string }[];
+  suggestedSubjectId?: string | null;
+}) {
   const timer = useFocusTimer();
   const { state, now, ready } = timer;
   const idle = state.phase === "idle";
+
+  const suggested = useRef(false);
+  useEffect(() => {
+    if (!ready || suggested.current || !suggestedSubjectId) return;
+    suggested.current = true;
+    if (idle) timer.configure({ subjectId: suggestedSubjectId });
+  }, [ready, idle, suggestedSubjectId, timer]);
   const paused = !idle && state.runningSince === null;
   const subjectId = state.subjectId && subjects.some((s) => s.id === state.subjectId) ? state.subjectId : "";
   const subjectName = subjects.find((s) => s.id === subjectId)?.name;

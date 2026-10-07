@@ -176,6 +176,39 @@ export const progressRepository = {
   },
 
   /**
+   * For each of these topics: its active cards, and the ratings of cards
+   * already seen since `since` with how many were forgotten. Topics with
+   * neither are left out.
+   */
+  async topicStudy(db: DbExecutor, ws: string, q: { topicIds: string[]; since: Date }) {
+    if (q.topicIds.length === 0) return [];
+    const ids = sql.join(
+      q.topicIds.map((id) => sql`${id}::uuid`),
+      sql`, `,
+    );
+    const result = await db.execute(sql`
+      select ${cardTopics.topicId} as topic_id,
+             count(distinct ${cards.id}) filter (where ${cards.suspendedAt} is null) as cards,
+             count(${cardReviews.id}) as ratings,
+             count(${cardReviews.id}) filter (where ${cardReviews.rating} = 1) as forgot
+      from ${cardTopics}
+      join ${cards} on ${cards.id} = ${cardTopics.cardId} and ${cards.workspaceId} = ${ws}
+      left join ${cardReviews} on ${cardReviews.cardId} = ${cards.id}
+        and ${cardReviews.workspaceId} = ${ws}
+        and ${cardReviews.reviewedAt} >= ${q.since}
+        and ${cardReviews.stateBefore} <> 'new'
+      where ${cardTopics.workspaceId} = ${ws} and ${cardTopics.topicId} in (${ids})
+      group by ${cardTopics.topicId}
+    `);
+    return (result.rows as Record<string, unknown>[]).map((r) => ({
+      topicId: String(r.topic_id),
+      cards: num(r.cards),
+      ratings: num(r.ratings),
+      forgot: num(r.forgot),
+    }));
+  },
+
+  /**
    * Cards already learned that fall due before `until`, per local day.
    * Anything overdue counts on the day of `now`.
    */

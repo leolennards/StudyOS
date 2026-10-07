@@ -168,4 +168,24 @@ export const progressService = {
       forecast,
     };
   },
+
+  /**
+   * Per topic, for planning: its active flashcards, and the share of
+   * reviews remembered over the last month (null with too few to say).
+   * Topics without cards are left out.
+   */
+  async getTopicStudy(ctx: RequestContext, topicIds: string[], now = new Date()) {
+    const since = new Date(now.getTime() - INSIGHT_WINDOW_DAYS * 86_400_000);
+    const rows = await repo.topicStudy(getDb(), ctx.workspaceId, { topicIds, since });
+    return new Map(
+      rows.map((r) => [
+        r.topicId,
+        {
+          cards: r.cards,
+          ratings: r.ratings,
+          recall: r.ratings >= WEAK_TOPIC_MIN_RATINGS ? 1 - r.forgot / r.ratings : null,
+        },
+      ]),
+    );
+  },
 };

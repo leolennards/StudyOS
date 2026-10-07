@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useSyncExternalStore } from "react";
 import {
+  CalendarClock,
   ChartNoAxesColumnIncreasing,
   ChevronsUpDown,
   GalleryVerticalEnd,
@@ -44,12 +45,13 @@ export type ShellUser = { name: string; email: string };
 /**
  * The app shell (Architecture §1): a short, subject-centric global sidebar.
  * Collapsible to an icon rail on desktop; a drawer on mobile (03 UI/UX spec).
- * Planner and Tutor are added as their phases are built.
+ * Exams is the first part of the planner; Tutor is added with its phase.
  */
 const NAV = [
   { href: "/today", label: "Today", icon: Sunrise },
   { href: "/review", label: "Review", icon: GalleryVerticalEnd },
   { href: "/focus", label: "Focus", icon: Timer },
+  { href: "/exams", label: "Exams", icon: CalendarClock },
   { href: "/progress", label: "Progress", icon: ChartNoAxesColumnIncreasing },
   { href: "/subjects", label: "Subjects", icon: Library },
 ] as const;

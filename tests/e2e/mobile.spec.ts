@@ -22,7 +22,7 @@ test("no page scrolls sideways at phone width", async ({ page }) => {
   await signUp(page);
   await createSubject(page, "Pharmacology");
 
-  for (const path of ["/today", "/review", "/focus", "/progress", "/subjects", "/settings", "/sign-in"]) {
+  for (const path of ["/today", "/review", "/focus", "/exams", "/progress", "/subjects", "/settings", "/sign-in"]) {
     if (path === "/sign-in") await signOut(page);
     await page.goto(path);
     const overflow = await page.evaluate(
