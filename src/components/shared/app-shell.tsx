@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useSyncExternalStore } from "react";
 import {
+  ChartNoAxesColumnIncreasing,
   ChevronsUpDown,
   GalleryVerticalEnd,
   Library,
@@ -15,6 +16,7 @@ import {
   Search,
   Settings,
   Sunrise,
+  Timer,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,6 +29,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useFocusBadge } from "@/features/focus/focus-panel";
+import { FocusTimerProvider } from "@/features/focus/focus-timer-provider";
 import { SubjectDot } from "@/features/knowledge/subject-dot";
 import { CommandPalette, useCommandPaletteShortcut } from "@/features/search/command-palette";
 import { authClient } from "@/lib/auth-client";
@@ -40,11 +44,13 @@ export type ShellUser = { name: string; email: string };
 /**
  * The app shell (Architecture §1): a short, subject-centric global sidebar.
  * Collapsible to an icon rail on desktop; a drawer on mobile (03 UI/UX spec).
- * Planner, Progress and Tutor are added as their phases are built.
+ * Planner and Tutor are added as their phases are built.
  */
 const NAV = [
   { href: "/today", label: "Today", icon: Sunrise },
   { href: "/review", label: "Review", icon: GalleryVerticalEnd },
+  { href: "/focus", label: "Focus", icon: Timer },
+  { href: "/progress", label: "Progress", icon: ChartNoAxesColumnIncreasing },
   { href: "/subjects", label: "Subjects", icon: Library },
 ] as const;
 
@@ -80,60 +86,65 @@ export function AppShell({
   }
 
   return (
-    <div className="flex min-h-dvh">
-      {/* Desktop sidebar */}
-      <aside
-        aria-label="Main"
-        className={cn(
-          "border-sidebar-border bg-sidebar text-sidebar-foreground sticky top-0 hidden h-dvh shrink-0 flex-col border-r transition-[width] duration-200 md:flex",
-          collapsed ? "w-14" : "w-64",
-        )}
-      >
-        <SidebarContents
-          user={user}
-          subjects={subjects}
-          reviewCount={reviewCount}
-          collapsed={collapsed}
-          onToggle={toggleCollapsed}
-          onSearch={openSearch}
-        />
-      </aside>
-
-      {/* Mobile drawer */}
-      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetContent aria-describedby={undefined}>
-          <SheetTitle className="sr-only">Navigation</SheetTitle>
-          <SheetDescription className="sr-only">Main navigation</SheetDescription>
-          {/* Any link inside closes the drawer, so the page is visible after navigating. */}
+    <FocusTimerProvider>
+      <div className="flex min-h-dvh">
+        {/* Desktop sidebar */}
+        <aside
+          aria-label="Main"
+          className={cn(
+            "border-sidebar-border bg-sidebar text-sidebar-foreground sticky top-0 hidden h-dvh shrink-0 flex-col border-r transition-[width] duration-200 md:flex",
+            collapsed ? "w-14" : "w-64",
+          )}
+        >
           <SidebarContents
             user={user}
             subjects={subjects}
             reviewCount={reviewCount}
-            collapsed={false}
-            onNavigate={() => setMobileOpen(false)}
+            collapsed={collapsed}
+            onToggle={toggleCollapsed}
             onSearch={openSearch}
           />
-        </SheetContent>
-      </Sheet>
+        </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="bg-background/85 sticky top-0 z-30 flex h-14 items-center gap-2 border-b px-3 backdrop-blur md:hidden">
-          <Button variant="ghost" size="icon" onClick={() => setMobileOpen(true)} aria-label="Open navigation">
-            <Menu />
-          </Button>
-          <Link href="/today" aria-label="StudyOS home">
-            <Logo />
-          </Link>
-          <Button variant="ghost" size="icon" className="ml-auto" onClick={openSearch} aria-label="Search">
-            <Search />
-          </Button>
-        </header>
-        <main id="main" className="flex-1">
-          {children}
-        </main>
+        {/* Mobile drawer */}
+        <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+          <SheetContent aria-describedby={undefined}>
+            <SheetTitle className="sr-only">Navigation</SheetTitle>
+            <SheetDescription className="sr-only">Main navigation</SheetDescription>
+            {/* Any link inside closes the drawer, so the page is visible after navigating. */}
+            <SidebarContents
+              user={user}
+              subjects={subjects}
+              reviewCount={reviewCount}
+              collapsed={false}
+              onNavigate={() => setMobileOpen(false)}
+              onSearch={openSearch}
+            />
+          </SheetContent>
+        </Sheet>
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="bg-background/85 sticky top-0 z-30 flex h-14 items-center gap-2 border-b px-3 backdrop-blur md:hidden">
+            <Button variant="ghost" size="icon" onClick={() => setMobileOpen(true)} aria-label="Open navigation">
+              <Menu />
+            </Button>
+            <Link href="/today" aria-label="StudyOS home">
+              <Logo />
+            </Link>
+            <div className="ml-auto flex items-center gap-1">
+              <FocusPill />
+              <Button variant="ghost" size="icon" onClick={openSearch} aria-label="Search">
+                <Search />
+              </Button>
+            </div>
+          </header>
+          <main id="main" className="flex-1">
+            {children}
+          </main>
+        </div>
+        <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} subjects={subjects} />
       </div>
-      <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} subjects={subjects} />
-    </div>
+    </FocusTimerProvider>
   );
 }
 
@@ -156,6 +167,7 @@ function SidebarContents({
 }) {
   const pathname = usePathname();
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+  const focusClock = useFocusBadge();
 
   return (
     <div
@@ -200,6 +212,7 @@ function SidebarContents({
                 active={isActive(item.href)}
                 collapsed={collapsed}
                 count={item.href === "/review" ? reviewCount : undefined}
+                clock={item.href === "/focus" ? focusClock : null}
               />
             </li>
           ))}
@@ -315,6 +328,7 @@ function NavLink({
   active,
   collapsed,
   count,
+  clock,
 }: {
   href: string;
   label: string;
@@ -322,13 +336,17 @@ function NavLink({
   active: boolean;
   collapsed: boolean;
   count?: number;
+  /** A running timer's time left, shown in place of a count. */
+  clock?: string | null;
 }) {
   const badge = count !== undefined && count > 0 ? (count > 999 ? "999+" : String(count)) : null;
   const link = (
     <Link
       href={href}
       aria-current={active ? "page" : undefined}
-      aria-label={collapsed ? (badge ? `${label}, ${badge} waiting` : label) : undefined}
+      aria-label={
+        collapsed ? (clock ? `${label}, ${clock} left` : badge ? `${label}, ${badge} waiting` : label) : undefined
+      }
       className={cn(
         "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-ring/50 relative flex h-9 items-center gap-2.5 rounded-md px-2 text-sm outline-none focus-visible:ring-[3px] [&_svg]:size-4 [&_svg]:shrink-0",
         active && "bg-sidebar-accent text-sidebar-accent-foreground font-medium",
@@ -337,7 +355,17 @@ function NavLink({
     >
       {icon}
       {!collapsed && label}
-      {badge &&
+      {clock &&
+        (collapsed ? (
+          <span aria-hidden className="bg-success absolute top-1.5 right-2 size-2 animate-pulse rounded-full" />
+        ) : (
+          <span className="bg-success/15 text-success ml-auto rounded-full px-1.5 text-xs font-medium tabular-nums">
+            {clock}
+            <span className="sr-only"> left</span>
+          </span>
+        ))}
+      {!clock &&
+        badge &&
         (collapsed ? (
           <span aria-hidden className="bg-primary absolute top-1.5 right-2 size-2 rounded-full" />
         ) : (
@@ -354,6 +382,23 @@ function NavLink({
       <TooltipTrigger asChild>{link}</TooltipTrigger>
       <TooltipContent side="right">{label}</TooltipContent>
     </Tooltip>
+  );
+}
+
+/** On phones, a running focus timer shows in the header, since the sidebar is hidden. */
+function FocusPill() {
+  const clock = useFocusBadge();
+  const pathname = usePathname();
+  if (!clock || pathname === "/focus") return null;
+  return (
+    <Link
+      href="/focus"
+      className="bg-success/15 text-success focus-visible:ring-ring/50 rounded-full px-2.5 py-1 text-xs font-medium tabular-nums outline-none focus-visible:ring-[3px]"
+    >
+      <Timer className="mr-1 inline size-3.5 align-[-2px]" aria-hidden />
+      {clock}
+      <span className="sr-only"> left in your focus session</span>
+    </Link>
   );
 }
 

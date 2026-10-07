@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CircleCheck, RotateCcw, Undo2 } from "lucide-react";
+import { CircleCheck, Flame, RotateCcw, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { ProgressRing } from "@/features/focus/progress-ring";
 import { SubjectDot } from "@/features/knowledge/subject-dot";
 import { cn } from "@/lib/utils";
 import { loadReviewSession, reviewCard, undoReview } from "@/server/actions/flashcards";
@@ -20,12 +21,15 @@ import {
   schedule,
 } from "@/server/modules/flashcards/domain/scheduler";
 import type { ClientSession, SessionItem } from "@/server/modules/flashcards/types";
+import { REVIEW_SECONDS_CAP } from "@/server/modules/progress/domain/limits";
 import { ItemAnswer, ItemQuestion } from "./card-text";
 
 type Item = Omit<SessionItem, "memory"> & { memory: MemoryState };
 type Queued = { key: string; item: Item; showAt: number };
 type Snapshot = { queue: Queued[]; current: Queued | null; tally: Tally };
 type Tally = Record<Rating, number>;
+/** Today's study against the goal, from the server; fresh again once the session's ratings are saved. */
+export type ReviewHabits = { todaySeconds: number; goalMinutes: number; streak: number; studiedToday: boolean };
 
 const emptyTally = (): Tally => ({ 1: 0, 2: 0, 3: 0, 4: 0 });
 
@@ -78,11 +82,13 @@ export function ReviewSession({
   scope,
   subjects,
   doneHref,
+  habits,
 }: {
   initial: ClientSession;
   scope: { subjectId?: string; topicId?: string };
   subjects: Record<string, { name: string; colour: string }>;
   doneHref: string;
+  habits: ReviewHabits;
 }) {
   const router = useRouter();
   const [retention, setRetention] = useState(initial.retention);
@@ -147,7 +153,7 @@ export function ReviewSession({
         : queue;
       setHistory((h) => [...h.slice(-49), { reviewId, before }]);
       setTally((t) => ({ ...t, [rating]: t[rating] + 1 }));
-      setSpentMs((ms) => ms + Math.min(durationMs, 5 * 60_000));
+      setSpentMs((ms) => ms + Math.min(durationMs, REVIEW_SECONDS_CAP * 1000));
       setState(take(requeue, at.getTime()));
       setRevealed(false);
 
@@ -287,8 +293,11 @@ export function ReviewSession({
           aria-labelledby="session-done"
           className="bg-card flex flex-col items-center rounded-xl border px-6 py-10 text-center"
         >
-          <div className="bg-success/10 text-success mb-4 grid size-12 place-items-center rounded-xl" aria-hidden>
-            <CircleCheck className="size-6" />
+          <div className="relative mb-4 grid size-12 place-items-center" aria-hidden>
+            {reviewed > 0 && <Confetti />}
+            <div className="bg-success/10 text-success animate-in zoom-in-50 fade-in grid size-12 place-items-center rounded-xl duration-500">
+              <CircleCheck className="size-6" />
+            </div>
           </div>
           <h2 id="session-done" className="text-lg font-semibold">
             {reviewed > 0 ? "Session complete" : "Nothing to review right now"}
@@ -308,6 +317,26 @@ export function ReviewSession({
                 </div>
               ))}
             </dl>
+          )}
+          {reviewed > 0 && (
+            <div className="bg-muted/50 mt-6 flex w-full max-w-sm items-center gap-4 rounded-lg px-4 py-3 text-left text-sm">
+              <ProgressRing
+                value={habits.todaySeconds / (habits.goalMinutes * 60)}
+                size={48}
+                stroke={6}
+                barClassName={habits.todaySeconds >= habits.goalMinutes * 60 ? "text-success" : "text-primary"}
+              />
+              <div className="min-w-0">
+                <p className="font-medium">
+                  {Math.floor(habits.todaySeconds / 60)} of {habits.goalMinutes} min studied today
+                </p>
+                <p className="text-muted-foreground mt-0.5 flex items-center gap-1">
+                  <Flame className="size-3.5 text-orange-500" aria-hidden />
+                  {/* Until the refresh lands, count today: this session is study. */}
+                  {habits.studiedToday ? habits.streak : habits.streak + 1} day streak
+                </p>
+              </div>
+            </div>
           )}
           <div className="mt-6 flex flex-wrap justify-center gap-2">
             {undoButton}
@@ -362,13 +391,20 @@ export function ReviewSession({
             {subject.name}
           </p>
         )}
-        <div data-testid="card-question" className="text-center text-xl leading-relaxed sm:text-2xl">
+        <div
+          key={`${current.key}:${current.showAt}`}
+          data-testid="card-question"
+          className="animate-in fade-in slide-in-from-right-4 text-center text-xl leading-relaxed duration-300 sm:text-2xl"
+        >
           {faces.kind === "cloze" && revealed ? <ItemAnswer faces={faces} /> : <ItemQuestion faces={faces} />}
         </div>
         {revealed && faces.kind === "plain" && (
           <>
-            <hr className="my-6" />
-            <div data-testid="card-answer" className="text-center text-xl leading-relaxed sm:text-2xl">
+            <hr className="animate-in fade-in my-6 duration-300" />
+            <div
+              data-testid="card-answer"
+              className="animate-in fade-in slide-in-from-top-2 text-center text-xl leading-relaxed duration-300 sm:text-2xl"
+            >
               <ItemAnswer faces={faces} />
             </div>
           </>
@@ -404,5 +440,22 @@ export function ReviewSession({
         )}
       </div>
     </div>
+  );
+}
+
+const CONFETTI_COLOURS = ["bg-primary", "bg-success", "bg-amber-400", "bg-sky-400", "bg-pink-400", "bg-orange-400"];
+
+/** A small burst of colour behind the tick when a session ends. Skipped when reduced motion is preferred. */
+function Confetti() {
+  return (
+    <span className="pointer-events-none absolute inset-0 motion-reduce:hidden">
+      {Array.from({ length: 14 }, (_, i) => (
+        <span
+          key={i}
+          className={cn("confetti-piece absolute top-1/2 left-1/2 size-1.5 rounded-full", CONFETTI_COLOURS[i % 6])}
+          style={{ "--angle": `${(360 / 14) * i}deg`, "--distance": `${36 + (i % 3) * 10}px` } as React.CSSProperties}
+        />
+      ))}
+    </span>
   );
 }

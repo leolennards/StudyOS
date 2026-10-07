@@ -156,7 +156,8 @@ test("cards can be suspended, deleted, and review settings changed", async ({ pa
   const perDay = page.getByLabel("New cards per day");
   await expect(perDay).toHaveValue("20");
   await perDay.fill("5");
-  await page.getByRole("button", { name: "Save" }).nth(2).click();
+  // Profile, preferences, daily goal, then review.
+  await page.getByRole("button", { name: "Save" }).nth(3).click();
   await expect(page.getByText("Review settings saved")).toBeVisible();
   await page.reload();
   await expect(page.getByLabel("New cards per day")).toHaveValue("5");

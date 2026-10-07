@@ -8,6 +8,7 @@ import {
   DEFAULT_RETENTION,
   DEFAULT_REVIEWS_PER_DAY,
 } from "@/server/modules/flashcards/domain/limits";
+import { DEFAULT_DAILY_GOAL_MINUTES } from "@/server/modules/progress/domain/limits";
 import type { updateSettingsSchema } from "./schemas";
 
 export type UserSettings = {
@@ -17,6 +18,8 @@ export type UserSettings = {
   desiredRetention: number;
   newCardsPerDay: number;
   reviewsPerDay: number;
+  /** Study time aimed for each day, in minutes (Architecture §29). */
+  dailyGoalMinutes: number;
 };
 
 const DEFAULTS: UserSettings = {
@@ -25,6 +28,7 @@ const DEFAULTS: UserSettings = {
   desiredRetention: DEFAULT_RETENTION,
   newCardsPerDay: DEFAULT_NEW_PER_DAY,
   reviewsPerDay: DEFAULT_REVIEWS_PER_DAY,
+  dailyGoalMinutes: DEFAULT_DAILY_GOAL_MINUTES,
 };
 
 /** Per-user preferences. Rows are created lazily on first write. */
@@ -38,6 +42,7 @@ export const settingsService = {
           desiredRetention: row.desiredRetention,
           newCardsPerDay: row.newCardsPerDay,
           reviewsPerDay: row.reviewsPerDay,
+          dailyGoalMinutes: row.dailyGoalMinutes,
         }
       : DEFAULTS;
   },

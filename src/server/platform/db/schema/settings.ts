@@ -16,6 +16,8 @@ export const userSettings = pgTable(
     desiredRetention: doublePrecision("desired_retention").notNull().default(0.9),
     newCardsPerDay: integer("new_cards_per_day").notNull().default(20),
     reviewsPerDay: integer("reviews_per_day").notNull().default(200),
+    /** The study time the student aims for each day: focus sessions plus flashcard review. */
+    dailyGoalMinutes: integer("daily_goal_minutes").notNull().default(30),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -23,5 +25,6 @@ export const userSettings = pgTable(
     check("user_settings_retention_range", sql`${t.desiredRetention} >= 0.7 and ${t.desiredRetention} <= 0.97`),
     check("user_settings_new_cards_range", sql`${t.newCardsPerDay} >= 0 and ${t.newCardsPerDay} <= 500`),
     check("user_settings_reviews_range", sql`${t.reviewsPerDay} >= 0 and ${t.reviewsPerDay} <= 9999`),
+    check("user_settings_daily_goal_range", sql`${t.dailyGoalMinutes} >= 5 and ${t.dailyGoalMinutes} <= 720`),
   ],
 );

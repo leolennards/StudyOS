@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { PageContainer, PageHeader } from "@/components/shared/page-header";
 import { Separator } from "@/components/ui/separator";
+import { GoalForm } from "@/features/settings/goal-form";
 import { PreferencesForm } from "@/features/settings/preferences-form";
 import { ProfileForm } from "@/features/settings/profile-form";
 import { ReviewSettingsForm } from "@/features/settings/review-settings-form";
@@ -48,6 +49,14 @@ export default async function SettingsPage() {
         <Separator />
         <SettingsSection id="prefs-heading" title="Preferences" description="Appearance and time zone.">
           <PreferencesForm timezone={settings.timezone} theme={settings.theme} />
+        </SettingsSection>
+        <Separator />
+        <SettingsSection
+          id="goal-heading"
+          title="Daily goal"
+          description="How much you aim to study each day. Today and Progress show how you're doing against it."
+        >
+          <GoalForm dailyGoalMinutes={settings.dailyGoalMinutes} />
         </SettingsSection>
         <Separator />
         <SettingsSection

@@ -11,6 +11,7 @@ import { requirePageSession } from "@/server/platform/auth/session";
 import { flashcardsService } from "@/server/modules/flashcards/service";
 import { toClientSession } from "@/server/modules/flashcards/types";
 import { knowledgeService } from "@/server/modules/knowledge/service";
+import { progressService } from "@/server/modules/progress/service";
 
 export const metadata: Metadata = { title: "Review" };
 
@@ -35,10 +36,11 @@ export default async function ReviewPage({ searchParams }: PageProps<"/review">)
   }
   const scope = { subjectId, topicId };
 
-  const [session, counts, cardCount] = await Promise.all([
+  const [session, counts, cardCount, habits] = await Promise.all([
     flashcardsService.getSession(ctx, scope),
     flashcardsService.getSubjectCounts(ctx),
     flashcardsService.countCards(ctx),
+    progressService.getHabits(ctx),
   ]);
   const current = subjects.find((s) => s.id === subjectId);
   const doneHref = current ? `/subjects/${current.id}/flashcards${topicId ? `?topic=${topicId}` : ""}` : "/today";
@@ -93,6 +95,12 @@ export default async function ReviewPage({ searchParams }: PageProps<"/review">)
             scope={scope}
             subjects={Object.fromEntries(subjects.map((s) => [s.id, { name: s.name, colour: s.colour }]))}
             doneHref={doneHref}
+            habits={{
+              todaySeconds: habits.todaySeconds,
+              goalMinutes: habits.goalMinutes,
+              streak: habits.streak,
+              studiedToday: habits.studiedToday,
+            }}
           />
         )}
       </div>
