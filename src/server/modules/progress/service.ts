@@ -169,6 +169,14 @@ export const progressService = {
     };
   },
 
+  /** How many learned flashcard items fall due on each of the next `days` days, today included. */
+  async getDueByDay(ctx: RequestContext, days: number, now = new Date()) {
+    const settings = await settingsService.get(ctx);
+    const until = endOfDay(new Date(now.getTime() + (days - 1) * 86_400_000), settings.timezone);
+    const rows = await repo.dueByDay(getDb(), ctx.workspaceId, { timeZone: settings.timezone, now, until });
+    return new Map(rows.map((r) => [r.day, r.items]));
+  },
+
   /**
    * Per topic, for planning: its active flashcards, the share of reviews
    * remembered over the last month (null with too few to say), and its quiz

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useSyncExternalStore } from "react";
 import {
+  CalendarCheck,
   CalendarClock,
   ChartNoAxesColumnIncreasing,
   ChevronsUpDown,
@@ -50,6 +51,7 @@ export type ShellUser = { name: string; email: string };
  */
 const NAV = [
   { href: "/today", label: "Today", icon: Sunrise },
+  { href: "/plan", label: "Plan", icon: CalendarCheck },
   { href: "/review", label: "Review", icon: GalleryVerticalEnd },
   { href: "/quiz", label: "Quiz", icon: CircleHelp },
   { href: "/focus", label: "Focus", icon: Timer },

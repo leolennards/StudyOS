@@ -217,6 +217,39 @@ export const examsService = {
     );
   },
 
+  /**
+   * Each subject's papers in the order to sit them for practice: ones never
+   * sat first, newest year first, then the ones sat longest ago. For planning.
+   */
+  async getPapersToSit(ctx: RequestContext, subjectIds: string[]) {
+    const db = getDb();
+    const papers = await repo.listPapersIn(db, ctx.workspaceId, subjectIds);
+    const attempts = await repo.listAttempts(
+      db,
+      ctx.workspaceId,
+      papers.map((p) => p.id),
+    );
+    const lastSat = new Map<string, string>();
+    for (const a of attempts) lastSat.set(a.paperId, a.takenOn);
+    const ordered = [...papers].sort((a, b) => {
+      const la = lastSat.get(a.id) ?? "";
+      const lb = lastSat.get(b.id) ?? "";
+      if (la !== lb) return la < lb ? -1 : 1;
+      return (
+        (b.year ?? 0) - (a.year ?? 0) ||
+        a.title.localeCompare(b.title, undefined, { numeric: true }) ||
+        a.id.localeCompare(b.id)
+      );
+    });
+    const bySubject = new Map<string, { id: string; title: string; minutes: number | null }[]>();
+    for (const p of ordered) {
+      const list = bySubject.get(p.subjectId) ?? [];
+      list.push({ id: p.id, title: p.title, minutes: p.durationMin });
+      bySubject.set(p.subjectId, list);
+    }
+    return bySubject;
+  },
+
   // ── writes ────────────────────────────────────────────────────────────────
   async createPaper(ctx: RequestContext, input: In<typeof createPaperSchema>) {
     assertCanWrite(ctx);
