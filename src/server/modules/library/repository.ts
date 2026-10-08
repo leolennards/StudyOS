@@ -1,6 +1,6 @@
 import { and, asc, count, desc, eq, inArray, lt, ne, sql, sum } from "drizzle-orm";
 import type { DbExecutor } from "@/server/platform/db/client";
-import { documentPages, documents, documentTopics } from "@/server/platform/db/schema";
+import { cardImages, documentPages, documents, documentTopics } from "@/server/platform/db/schema";
 import { HEADLINE_OPTIONS } from "@/server/lib/search-query";
 
 /**
@@ -71,12 +71,17 @@ export const libraryRepository = {
     return rows.length > 0;
   },
 
+  /** Bytes stored for the workspace: its documents and the pictures on its flashcards. */
   async storageUsed(db: DbExecutor, ws: string) {
-    const [row] = await db
+    const [docs] = await db
       .select({ bytes: sum(documents.sizeBytes).mapWith(Number) })
       .from(documents)
       .where(eq(documents.workspaceId, ws));
-    return row?.bytes ?? 0;
+    const [images] = await db
+      .select({ bytes: sum(cardImages.sizeBytes).mapWith(Number) })
+      .from(cardImages)
+      .where(eq(cardImages.workspaceId, ws));
+    return (docs?.bytes ?? 0) + (images?.bytes ?? 0);
   },
 
   async countDocuments(db: DbExecutor, ws: string, subjectId?: string) {

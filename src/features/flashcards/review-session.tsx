@@ -396,7 +396,7 @@ export function ReviewSession({
           data-testid="card-question"
           className="animate-in fade-in slide-in-from-right-4 text-center text-xl leading-relaxed duration-300 sm:text-2xl"
         >
-          {faces.kind === "cloze" && revealed ? <ItemAnswer faces={faces} /> : <ItemQuestion faces={faces} />}
+          {faces.kind !== "plain" && revealed ? <ItemAnswer faces={faces} /> : <ItemQuestion faces={faces} />}
         </div>
         {revealed && faces.kind === "plain" && (
           <>

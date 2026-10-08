@@ -10,6 +10,7 @@ import { libreOfficePath } from "@/server/platform/convert/libreoffice";
 import { getBoss, type JobPayloads, QUEUES, stopBoss } from "@/server/platform/jobs";
 import { closeOcr } from "@/server/platform/ocr";
 import { logger } from "@/server/platform/observability/logger";
+import { flashcardsJobs } from "@/server/modules/flashcards/jobs";
 import { libraryJobs } from "@/server/modules/library/jobs";
 import { notesService } from "@/server/modules/notes/service";
 
@@ -35,6 +36,9 @@ async function main() {
     logger.info({ deleted }, "notes trash purged");
   });
   await boss.schedule(QUEUES.notesPurgeTrash, "41 * * * *", {});
+  // Pictures no flashcard uses, a day after upload.
+  await boss.work(QUEUES.cardImagesCleanUp, async () => flashcardsJobs.cleanUpImages());
+  await boss.schedule(QUEUES.cardImagesCleanUp, "29 * * * *", {});
 
   const soffice = libreOfficePath(e.LIBREOFFICE_PATH);
   logger.info(

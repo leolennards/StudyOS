@@ -1,5 +1,11 @@
 /** Limits for flashcards, shared by the card editor (client) and the service (server). */
 export const CARD_TEXT_MAX = 5_000;
+/** Pictures on cards: the largest upload accepted, and the formats a browser can send. */
+export const CARD_IMAGE_MAX_MB = 10;
+export const CARD_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"] as const;
+/** Pictures are stored at most this many pixels wide or tall. */
+export const CARD_IMAGE_MAX_DIMENSION = 1600;
+
 /** Cloze deletions are numbered c1 to c20. */
 export const CLOZE_MAX_NUMBER = 20;
 /** The most cards a subject's list shows at once. */

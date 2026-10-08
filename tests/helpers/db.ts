@@ -7,7 +7,7 @@ import { users, workspaceMembers, workspaces } from "@/server/platform/db/schema
 /** Empties every table between tests. */
 export async function resetDatabase() {
   await getDb().execute(
-    sql`truncate table users, workspaces, workspace_members, subjects, sections, topics, documents, document_pages, document_topics, notes, note_topics, card_imports, cards, card_topics, card_states, card_reviews, study_sessions, deadlines, deadline_topics, topic_confidence, quiz_attempts, quiz_questions, past_papers, past_paper_questions, past_paper_question_topics, past_paper_attempts, past_paper_attempt_marks, study_plans, plan_items, user_settings, accounts, sessions, verifications, rate_limits restart identity cascade`,
+    sql`truncate table users, workspaces, workspace_members, subjects, sections, topics, documents, document_pages, document_topics, notes, note_topics, card_imports, card_images, cards, card_topics, card_states, card_reviews, study_sessions, deadlines, deadline_topics, topic_confidence, quiz_attempts, quiz_questions, past_papers, past_paper_questions, past_paper_question_topics, past_paper_attempts, past_paper_attempt_marks, study_plans, plan_items, user_settings, accounts, sessions, verifications, rate_limits restart identity cascade`,
   );
 }
 

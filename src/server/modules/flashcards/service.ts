@@ -1,17 +1,19 @@
+import sharp from "sharp";
 import type { z } from "zod";
 import type { RequestContext } from "@/server/lib/context";
 import { AppError, isAppError, notFound } from "@/server/lib/errors";
 import { newId } from "@/server/lib/ids";
 import { parseHighlights, type SearchInput } from "@/server/lib/search-query";
 import { getDb, withTransaction } from "@/server/platform/db/client";
+import { cardImageKey, cardImagePrefix, cardImageUploadKey, getStorage } from "@/server/platform/storage";
 import { knowledgeService } from "@/server/modules/knowledge/service";
 import { libraryService } from "@/server/modules/library/service";
 import { notesService } from "@/server/modules/notes/service";
 import { settingsService } from "@/server/modules/settings/service";
 import { endOfDay, startOfDay } from "./domain/day";
 import { cardKey, type ImportSource } from "./domain/import";
-import { cardOrdinals, cardPreview, cardProblem, type CardType, itemLabel } from "./domain/items";
-import { CARD_LIST_MAX, LEARN_AHEAD_MINUTES, REVIEW_BATCH } from "./domain/limits";
+import { type CardContent, cardOrdinals, cardPreview, cardProblem, itemLabel } from "./domain/items";
+import { CARD_IMAGE_MAX_DIMENSION, CARD_LIST_MAX, LEARN_AHEAD_MINUTES, REVIEW_BATCH } from "./domain/limits";
 import { orderQueue } from "./domain/queue";
 import {
   elapsedDays,
@@ -24,6 +26,8 @@ import {
 import { flashcardsRepository as repo, type Scope, type StateRow } from "./repository";
 import type {
   cardIdSchema,
+  cardImageIdSchema,
+  createCardImageSchema,
   createCardSchema,
   importCardsSchema,
   importIdSchema,
@@ -64,12 +68,48 @@ async function checkTopics(ctx: RequestContext, subjectId: string, topicIds: str
   return unique;
 }
 
-/** The card's text, trimmed and checked, or a clear error. */
-function checkContent(input: { type: CardType; front: string; back: string }) {
-  const content = { type: input.type, front: input.front.trim(), back: input.back.trim() };
+/**
+ * The card's content, trimmed and checked, or a clear error. Its pictures
+ * must have finished uploading to the same subject; an image occlusion card
+ * keeps only its front picture, and other cards have no boxes.
+ */
+async function checkContent(ctx: RequestContext, subjectId: string, input: CardContent) {
+  const occlusion = input.type === "image_occlusion";
+  const content = {
+    type: input.type,
+    front: input.front.trim(),
+    back: input.back.trim(),
+    frontImageId: input.frontImageId ?? null,
+    backImageId: occlusion ? null : (input.backImageId ?? null),
+    occlusions: occlusion ? [...(input.occlusions ?? [])].sort((a, b) => a.n - b.n) : null,
+  };
   const problem = cardProblem(content);
   if (problem) throw new AppError("VALIDATION", problem, { fields: { front: [problem] } });
+  const ids = [...new Set([content.frontImageId, content.backImageId].filter((i): i is string => i !== null))];
+  const images = await repo.findImages(getDb(), ctx.workspaceId, ids);
+  if (images.length !== ids.length || images.some((i) => i.subjectId !== subjectId || i.status !== "ready")) {
+    throw new AppError("VALIDATION", "That picture isn't ready. Add it again.");
+  }
   return content;
+}
+
+/** Re-encodes an uploaded picture: turned upright, metadata (including location) stripped, size capped, WebP. */
+async function normalisePicture(data: Buffer) {
+  try {
+    const { data: webp, info } = await sharp(data, { limitInputPixels: 50_000_000, failOn: "error" })
+      .rotate()
+      .resize({
+        width: CARD_IMAGE_MAX_DIMENSION,
+        height: CARD_IMAGE_MAX_DIMENSION,
+        fit: "inside",
+        withoutEnlargement: true,
+      })
+      .webp({ quality: 82 })
+      .toBuffer({ resolveWithObject: true });
+    return { webp, width: info.width, height: info.height };
+  } catch {
+    return null;
+  }
 }
 
 /** Checks a card's source belongs to the same subject (and workspace), returning what to store. */
@@ -205,6 +245,9 @@ function cardView(
     type: card.type,
     front: card.front,
     back: card.back,
+    frontImageId: card.frontImageId,
+    backImageId: card.backImageId,
+    occlusions: card.occlusions,
     preview: cardPreview(card),
     suspended: card.suspendedAt !== null,
     createdAt: card.createdAt,
@@ -318,7 +361,7 @@ export const flashcardsService = {
   async createCard(ctx: RequestContext, input: In<typeof createCardSchema>) {
     assertCanWrite(ctx);
     await knowledgeService.getSubject(ctx, input.subjectId);
-    const content = checkContent(input);
+    const content = await checkContent(ctx, input.subjectId, input);
     const topicIds = await checkTopics(ctx, input.subjectId, input.topicIds ?? []);
     const source = await checkSource(ctx, input.subjectId, input);
     const id = newId();
@@ -339,13 +382,13 @@ export const flashcardsService = {
 
   /**
    * Edits a card. Items it still produces keep their schedule and history;
-   * items it no longer produces (a cloze deletion removed, or a reversed card
-   * made basic) are removed; items it newly produces start new.
+   * items it no longer produces (a cloze deletion or an occlusion box removed,
+   * or a reversed card made basic) are removed; items it newly produces start new.
    */
   async updateCard(ctx: RequestContext, input: In<typeof updateCardSchema>) {
     assertCanWrite(ctx);
     const card = await requireCard(ctx, input.id);
-    const content = checkContent(input);
+    const content = await checkContent(ctx, card.subjectId, input);
     const topicIds = input.topicIds ? await checkTopics(ctx, card.subjectId, input.topicIds) : null;
     const ordinals = cardOrdinals(content);
     await withTransaction(async (tx) => {
@@ -381,6 +424,79 @@ export const flashcardsService = {
     const card = await requireCard(ctx, input.id);
     await repo.deleteCard(getDb(), ctx.workspaceId, card.id);
     return { id: card.id, subjectId: card.subjectId };
+  },
+
+  // ── pictures ──────────────────────────────────────────────────────────────
+  /**
+   * Step 1 of adding a picture to a card (ADR-021): checks the subject, the
+   * size and the workspace's storage, records the picture and returns a
+   * signed URL the browser uploads the file to directly.
+   */
+  async createImageUpload(ctx: RequestContext, input: In<typeof createCardImageSchema>) {
+    assertCanWrite(ctx);
+    await knowledgeService.getSubject(ctx, input.subjectId);
+    const { usedBytes, quotaBytes } = await libraryService.storageUsage(ctx);
+    if (usedBytes + input.size > quotaBytes) {
+      throw new AppError(
+        "VALIDATION",
+        "This picture would go over your storage. Delete documents or pictures you no longer need, then try again.",
+      );
+    }
+    const id = newId();
+    await repo.insertImage(getDb(), {
+      id,
+      workspaceId: ctx.workspaceId,
+      subjectId: input.subjectId,
+      status: "pending",
+      sizeBytes: input.size,
+    });
+    const upload = await getStorage().createUploadUrl(cardImageUploadKey(ctx.workspaceId, id), {
+      contentType: input.contentType,
+      contentLength: input.size,
+      expiresInSeconds: 15 * 60,
+    });
+    return { id, upload };
+  },
+
+  /**
+   * Step 2: the browser has uploaded the file. The server re-encodes it as
+   * WebP, keeps only that, and marks the picture ready to put on a card.
+   */
+  async finishImageUpload(ctx: RequestContext, input: In<typeof cardImageIdSchema>) {
+    assertCanWrite(ctx);
+    const image = await repo.findImage(getDb(), ctx.workspaceId, input.id);
+    if (!image) throw notFound("That picture");
+    if (image.status === "ready") return { id: image.id, width: image.width, height: image.height };
+    const storage = getStorage();
+    const uploadKey = cardImageUploadKey(ctx.workspaceId, image.id);
+    const head = await storage.head(uploadKey);
+    if (!head) throw new AppError("VALIDATION", "The picture didn't arrive. Try adding it again.");
+    const picture = head.size === image.sizeBytes ? await normalisePicture(await storage.get(uploadKey)) : null;
+    await storage.deletePrefix(cardImagePrefix(ctx.workspaceId, image.id));
+    if (!picture) {
+      await repo.deleteImage(getDb(), ctx.workspaceId, image.id);
+      throw new AppError("VALIDATION", "That picture couldn't be opened. Try a PNG or JPEG.");
+    }
+    await storage.put(cardImageKey(ctx.workspaceId, image.id), picture.webp, "image/webp");
+    await repo.updateImage(getDb(), ctx.workspaceId, image.id, {
+      status: "ready",
+      sizeBytes: picture.webp.length,
+      width: picture.width,
+      height: picture.height,
+    });
+    return { id: image.id, width: picture.width, height: picture.height };
+  },
+
+  /** A short-lived URL for showing a picture, or a not-found error. */
+  async getImageUrl(ctx: RequestContext, id: string) {
+    const image = await repo.findImage(getDb(), ctx.workspaceId, id);
+    if (!image || image.status !== "ready") throw notFound("That picture");
+    return getStorage().createDownloadUrl(cardImageKey(ctx.workspaceId, image.id), {
+      contentType: "image/webp",
+      disposition: "inline",
+      filename: "picture.webp",
+      expiresInSeconds: 10 * 60,
+    });
   },
 
   // ── imports ───────────────────────────────────────────────────────────────
@@ -559,6 +675,9 @@ export const flashcardsService = {
       type: i.type,
       front: i.front,
       back: i.back,
+      frontImageId: i.frontImageId,
+      backImageId: i.backImageId,
+      occlusions: i.occlusions,
       memory: toMemory(i),
     }));
     const overview = await this.getOverview(ctx, scope, now);

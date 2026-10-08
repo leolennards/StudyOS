@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { IMPORT_LIMITS, IMPORT_SOURCES } from "./domain/import";
-import { CARD_TEXT_MAX } from "./domain/limits";
+import { CARD_IMAGE_MAX_MB, CARD_IMAGE_TYPES, CARD_TEXT_MAX } from "./domain/limits";
+import { OCCLUSION_LIMITS } from "./domain/occlusion";
 
 /** Input schemas shared by the card editor and review screen (client) and the actions (server). */
 const id = z.uuid("That item isn't valid");
@@ -9,12 +10,28 @@ const cardText = z
   .string()
   .max(CARD_TEXT_MAX, `Keep each side under ${CARD_TEXT_MAX.toLocaleString("en-GB")} characters`);
 
-export const CARD_TYPES = ["basic", "reverse", "cloze"] as const;
+export const CARD_TYPES = ["basic", "reverse", "cloze", "image_occlusion"] as const;
+
+const fraction = z.number().min(0).max(1);
+
+const occlusionBox = z.object({
+  n: z.number().int().min(1).max(OCCLUSION_LIMITS.maxNumber),
+  x: fraction,
+  y: fraction,
+  w: fraction,
+  h: fraction,
+});
 
 const cardFields = {
   type: z.enum(CARD_TYPES),
   front: cardText,
   back: cardText,
+  frontImageId: id.nullish(),
+  backImageId: id.nullish(),
+  occlusions: z
+    .array(occlusionBox)
+    .max(OCCLUSION_LIMITS.boxes, `Use at most ${OCCLUSION_LIMITS.boxes} boxes on one card`)
+    .nullish(),
   topicIds: z.array(id).max(200, "That's too many topics for one card").optional(),
 };
 
@@ -71,12 +88,25 @@ export const importCardsSchema = z.object({
     .transform((s) => s.slice(0, IMPORT_LIMITS.name)),
   topicId: id.optional(),
   cards: z
-    .array(z.object({ type: z.enum(CARD_TYPES), front: cardText, back: cardText }))
+    .array(z.object({ type: z.enum(["basic", "reverse", "cloze"]), front: cardText, back: cardText }))
     .min(1)
     .max(IMPORT_LIMITS.batch),
 });
 
 export const importIdSchema = z.object({ id });
+
+/** Step 1 of adding a picture to a card: what the browser is about to upload. */
+export const createCardImageSchema = z.object({
+  subjectId: id,
+  contentType: z.enum(CARD_IMAGE_TYPES, "Use a PNG, JPEG, WebP or GIF picture"),
+  size: z
+    .number()
+    .int()
+    .positive()
+    .max(CARD_IMAGE_MAX_MB * 1024 * 1024, `Use a picture under ${CARD_IMAGE_MAX_MB} MB`),
+});
+
+export const cardImageIdSchema = z.object({ id });
 
 export type CreateCardInput = z.input<typeof createCardSchema>;
 export type UpdateCardInput = z.input<typeof updateCardSchema>;

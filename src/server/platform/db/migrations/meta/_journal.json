@@ -71,6 +71,13 @@
       "when": 1791421417912,
       "tag": "0009_study_plan",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791424847770,
+      "tag": "0010_card_images",
+      "breakpoints": true
     }
   ]
 }

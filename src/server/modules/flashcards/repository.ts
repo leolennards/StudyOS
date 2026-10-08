@@ -1,6 +1,14 @@
 import { and, asc, count, desc, eq, gte, inArray, isNull, lte, ne, notInArray, or, sql, type SQL } from "drizzle-orm";
 import type { DbExecutor } from "@/server/platform/db/client";
-import { cardImports, cardReviews, cards, cardStates, cardTopics, subjects } from "@/server/platform/db/schema";
+import {
+  cardImages,
+  cardImports,
+  cardReviews,
+  cards,
+  cardStates,
+  cardTopics,
+  subjects,
+} from "@/server/platform/db/schema";
 import { HEADLINE_OPTIONS } from "@/server/lib/search-query";
 import type { MemoryState } from "./domain/scheduler";
 
@@ -28,6 +36,9 @@ const cardColumns = {
   type: cards.type,
   front: cards.front,
   back: cards.back,
+  frontImageId: cards.frontImageId,
+  backImageId: cards.backImageId,
+  occlusions: cards.occlusions,
   origin: cards.origin,
   sourceNoteId: cards.sourceNoteId,
   sourceDocumentId: cards.sourceDocumentId,
@@ -59,6 +70,9 @@ const itemColumns = {
   type: cards.type,
   front: cards.front,
   back: cards.back,
+  frontImageId: cards.frontImageId,
+  backImageId: cards.backImageId,
+  occlusions: cards.occlusions,
   ordinal: cardStates.ordinal,
   due: cardStates.due,
   stability: cardStates.stability,
@@ -71,6 +85,9 @@ const itemColumns = {
   state: cardStates.state,
   lastReview: cardStates.lastReview,
 };
+
+/** Cards with no picture: the ones a quiz can ask, since its questions and options are text. */
+const textOnly = and(ne(cards.type, "image_occlusion"), isNull(cards.frontImageId), isNull(cards.backImageId));
 
 function itemsQuery(db: DbExecutor, ws: string, scope: Scope, where: SQL | undefined) {
   return db
@@ -105,7 +122,9 @@ export const flashcardsRepository = {
     db: DbExecutor,
     ws: string,
     id: string,
-    patch: Partial<Pick<CardInsert, "type" | "front" | "back" | "suspendedAt">>,
+    patch: Partial<
+      Pick<CardInsert, "type" | "front" | "back" | "frontImageId" | "backImageId" | "occlusions" | "suspendedAt">
+    >,
   ) {
     const rows = await db
       .update(cards)
@@ -126,6 +145,76 @@ export const flashcardsRepository = {
       .from(cards)
       .where(and(eq(cards.workspaceId, ws), subjectId ? eq(cards.subjectId, subjectId) : undefined));
     return row?.n ?? 0;
+  },
+
+  // ── pictures ──────────────────────────────────────────────────────────────
+  async insertImage(db: DbExecutor, row: typeof cardImages.$inferInsert) {
+    await db.insert(cardImages).values(row);
+  },
+
+  async findImage(db: DbExecutor, ws: string, id: string) {
+    const rows = await db
+      .select()
+      .from(cardImages)
+      .where(and(eq(cardImages.id, id), eq(cardImages.workspaceId, ws)))
+      .limit(1);
+    return rows[0] ?? null;
+  },
+
+  async findImages(db: DbExecutor, ws: string, ids: string[]) {
+    if (ids.length === 0) return [];
+    return db
+      .select()
+      .from(cardImages)
+      .where(and(inArray(cardImages.id, ids), eq(cardImages.workspaceId, ws)));
+  },
+
+  async updateImage(
+    db: DbExecutor,
+    ws: string,
+    id: string,
+    patch: Partial<Pick<typeof cardImages.$inferInsert, "status" | "sizeBytes" | "width" | "height">>,
+  ) {
+    await db
+      .update(cardImages)
+      .set(patch)
+      .where(and(eq(cardImages.id, id), eq(cardImages.workspaceId, ws)));
+  },
+
+  async deleteImage(db: DbExecutor, ws: string, id: string) {
+    await db.delete(cardImages).where(and(eq(cardImages.id, id), eq(cardImages.workspaceId, ws)));
+  },
+
+  /**
+   * Housekeeping only, never from a request: pictures uploaded before
+   * `before` that no card uses (never saved on a card, or since removed
+   * from it, or their card deleted).
+   */
+  systemUnusedImages(db: DbExecutor, before: Date) {
+    return db
+      .select({ id: cardImages.id, workspaceId: cardImages.workspaceId })
+      .from(cardImages)
+      .where(
+        and(
+          lte(cardImages.createdAt, before),
+          sql`not exists (select 1 from ${cards} where ${cards.workspaceId} = ${cardImages.workspaceId} and (${cards.frontImageId} = ${cardImages.id} or ${cards.backImageId} = ${cardImages.id}))`,
+        ),
+      )
+      .limit(1_000);
+  },
+
+  /** Housekeeping only: which of these picture ids still have a row, as "workspace/id". */
+  async systemExistingImages(db: DbExecutor, ids: string[]) {
+    if (ids.length === 0) return new Set<string>();
+    const rows = await db
+      .select({ id: cardImages.id, workspaceId: cardImages.workspaceId })
+      .from(cardImages)
+      .where(inArray(cardImages.id, ids));
+    return new Set(rows.map((r) => `${r.workspaceId}/${r.id}`));
+  },
+
+  async systemDeleteImage(db: DbExecutor, ws: string, id: string) {
+    await db.delete(cardImages).where(and(eq(cardImages.id, id), eq(cardImages.workspaceId, ws)));
   },
 
   // ── imports ───────────────────────────────────────────────────────────────
@@ -354,9 +443,9 @@ export const flashcardsRepository = {
       .limit(limit);
   },
 
-  /** Up to `limit` items in a scope, in random order, for building a quiz. */
+  /** Up to `limit` items in a scope, in random order, for building a quiz. Cards with pictures are left out. */
   quizItems(db: DbExecutor, ws: string, scope: Scope, limit: number) {
-    return itemsQuery(db, ws, scope, undefined)
+    return itemsQuery(db, ws, scope, textOnly)
       .orderBy(sql`random()`)
       .limit(limit);
   },
@@ -364,7 +453,7 @@ export const flashcardsRepository = {
   /** The items of these cards, as `quizItems` returns them. */
   quizItemsOf(db: DbExecutor, ws: string, scope: Scope, cardIds: string[], limit: number) {
     if (cardIds.length === 0) return Promise.resolve([]);
-    return itemsQuery(db, ws, scope, inArray(cards.id, cardIds))
+    return itemsQuery(db, ws, scope, and(inArray(cards.id, cardIds), textOnly))
       .orderBy(sql`random()`)
       .limit(limit);
   },

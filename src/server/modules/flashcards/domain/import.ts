@@ -33,7 +33,8 @@ export const IMPORT_LIMITS = {
   name: 200,
 } as const;
 
-export type ImportCard = { type: CardType; front: string; back: string };
+/** Imported cards are text only: pictures and image occlusion notes are skipped. */
+export type ImportCard = { type: Exclude<CardType, "image_occlusion">; front: string; back: string };
 
 export type SkipReason = "empty" | "oneSided" | "media" | "badCloze" | "tooLong" | "duplicate";
 

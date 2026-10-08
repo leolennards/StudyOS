@@ -11,6 +11,7 @@ export const QUEUES = {
   storageDelete: "storage-delete",
   storageReconcile: "storage-reconcile",
   notesPurgeTrash: "notes-purge-trash",
+  cardImagesCleanUp: "card-images-clean-up",
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
@@ -20,6 +21,7 @@ export type JobPayloads = {
   "storage-delete": { prefix: string };
   "storage-reconcile": Record<string, never>;
   "notes-purge-trash": Record<string, never>;
+  "card-images-clean-up": Record<string, never>;
 };
 
 /** Retry policy per queue. Retries back off exponentially. */
@@ -28,6 +30,7 @@ export const QUEUE_OPTIONS: Record<QueueName, QueueOptions> = {
   "storage-delete": { retryLimit: 5, retryDelay: 30, retryBackoff: true, expireInSeconds: 5 * 60 },
   "storage-reconcile": { retryLimit: 1, retryDelay: 60, expireInSeconds: 30 * 60 },
   "notes-purge-trash": { retryLimit: 1, retryDelay: 60, expireInSeconds: 10 * 60 },
+  "card-images-clean-up": { retryLimit: 1, retryDelay: 60, expireInSeconds: 30 * 60 },
 };
 
 export type { Job };
