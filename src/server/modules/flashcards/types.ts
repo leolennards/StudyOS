@@ -1,4 +1,5 @@
 import type { CardType } from "./domain/items";
+import type { OcclusionBox } from "./domain/occlusion";
 import type { LearningState } from "./domain/scheduler";
 
 /** One item of a review session as the browser receives it: dates as ISO strings. */
@@ -9,6 +10,9 @@ export type SessionItem = {
   type: CardType;
   front: string;
   back: string;
+  frontImageId: string | null;
+  backImageId: string | null;
+  occlusions: OcclusionBox[] | null;
   memory: {
     due: string;
     stability: number;

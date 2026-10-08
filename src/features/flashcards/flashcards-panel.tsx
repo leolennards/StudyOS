@@ -21,6 +21,8 @@ import { cn } from "@/lib/utils";
 import { deleteCard, setCardSuspended } from "@/server/actions/flashcards";
 import { CARD_TYPE_LABELS, type CardType } from "@/server/modules/flashcards/domain/items";
 import { CardDialog, type CardDialogState } from "./card-dialog";
+import type { OcclusionBox } from "@/server/modules/flashcards/domain/occlusion";
+import { CardPicture } from "./card-picture";
 import { CardText } from "./card-text";
 
 export type CardListItem = {
@@ -28,6 +30,9 @@ export type CardListItem = {
   type: CardType;
   front: string;
   back: string;
+  frontImageId: string | null;
+  backImageId: string | null;
+  occlusions: OcclusionBox[] | null;
   preview: string;
   suspended: boolean;
   topics: { id: string; name: string }[];
@@ -140,12 +145,24 @@ export function FlashcardsPanel({
 
 const editState = (card: CardListItem): CardDialogState => ({
   mode: "edit",
-  card: { id: card.id, type: card.type, front: card.front, back: card.back, topicIds: card.topics.map((t) => t.id) },
+  card: {
+    id: card.id,
+    type: card.type,
+    front: card.front,
+    back: card.back,
+    frontImageId: card.frontImageId,
+    backImageId: card.backImageId,
+    occlusions: card.occlusions,
+    topicIds: card.topics.map((t) => t.id),
+  },
 });
 
 function CardRow({ card, onEdit }: { card: CardListItem; onEdit: () => void }) {
   return (
     <li className={cn("flex items-start gap-3 p-3 sm:p-4", card.suspended && "opacity-60")}>
+      {card.frontImageId && (
+        <CardPicture imageId={card.frontImageId} alt="" className="mx-0 size-14 shrink-0 object-cover" />
+      )}
       <div className="min-w-0 flex-1">
         <button
           type="button"
@@ -153,11 +170,13 @@ function CardRow({ card, onEdit }: { card: CardListItem; onEdit: () => void }) {
           className="hover:text-primary focus-visible:ring-ring/50 line-clamp-2 rounded-sm text-left font-medium outline-none focus-visible:ring-[3px]"
           aria-label={`Edit card: ${card.preview.slice(0, 80)}`}
         >
-          <CardText text={card.type === "cloze" ? card.preview : card.front} />
+          <CardText
+            text={card.type === "basic" || card.type === "reverse" ? card.front || card.preview : card.preview}
+          />
         </button>
-        {card.type !== "cloze" && card.back && (
+        {(card.type === "basic" || card.type === "reverse") && (card.back || card.backImageId) && (
           <p className="text-muted-foreground mt-0.5 line-clamp-2 text-sm">
-            <CardText text={card.back} />
+            {card.back ? <CardText text={card.back} /> : "Picture"}
           </p>
         )}
         <p className="text-muted-foreground mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
@@ -177,7 +196,9 @@ function CardRow({ card, onEdit }: { card: CardListItem; onEdit: () => void }) {
               <span aria-hidden>·</span>
               <span>
                 {CARD_TYPE_LABELS[card.type]}
-                {card.type === "cloze" && card.itemCount > 1 ? ` (${card.itemCount})` : ""}
+                {(card.type === "cloze" || card.type === "image_occlusion") && card.itemCount > 1
+                  ? ` (${card.itemCount})`
+                  : ""}
               </span>
             </>
           )}

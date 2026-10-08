@@ -6,6 +6,7 @@ import "katex/dist/katex.min.css";
 import type { ClozeSegment } from "@/server/modules/flashcards/domain/cloze";
 import type { ItemFaces } from "@/server/modules/flashcards/domain/items";
 import { cn } from "@/lib/utils";
+import { CardPicture, OcclusionPicture } from "./card-picture";
 import { splitMath } from "./math-text";
 
 /**
@@ -60,19 +61,71 @@ export function ClozeText({ segments, className }: { segments: ClozeSegment[]; c
   );
 }
 
-/** One side of a review item: the prompt, or the answer under it. */
-export function ItemQuestion({ faces }: { faces: ItemFaces }) {
-  return faces.kind === "cloze" ? <ClozeText segments={faces.question} /> : <CardText text={faces.question} />;
+/** Text and a picture on one side of a card, either of which may be missing. */
+function Side({
+  text,
+  imageId,
+  alt,
+  className,
+}: {
+  text: string;
+  imageId: string | null;
+  alt: string;
+  className?: string;
+}) {
+  return (
+    <>
+      {text && <CardText text={text} className={className} />}
+      {imageId && <CardPicture imageId={imageId} alt={alt} className={text ? "mt-4" : undefined} />}
+    </>
+  );
 }
 
-export function ItemAnswer({ faces }: { faces: ItemFaces }) {
+/** What an image occlusion card asks when the student didn't write a prompt. */
+const DEFAULT_OCCLUSION_PROMPT = "What is under the highlighted box?";
+
+/** One side of a review item: the prompt, or the answer under it. */
+export function ItemQuestion({ faces }: { faces: ItemFaces }) {
+  if (faces.kind === "occlusion") {
+    return (
+      <>
+        <CardText text={faces.prompt || DEFAULT_OCCLUSION_PROMPT} className="mb-4 block" />
+        <OcclusionPicture imageId={faces.imageId} boxes={faces.boxes} target={faces.target} revealed={false} />
+      </>
+    );
+  }
   if (faces.kind === "cloze") {
     return (
       <>
-        <ClozeText segments={faces.answer} />
+        <ClozeText segments={faces.question} />
+        {faces.imageId && <CardPicture imageId={faces.imageId} alt="Picture on the card" className="mt-4" />}
+      </>
+    );
+  }
+  return <Side text={faces.question} imageId={faces.questionImageId} alt="Picture on the question" />;
+}
+
+export function ItemAnswer({ faces }: { faces: ItemFaces }) {
+  if (faces.kind === "occlusion") {
+    return (
+      <>
+        <CardText text={faces.prompt || DEFAULT_OCCLUSION_PROMPT} className="mb-4 block" />
+        <OcclusionPicture imageId={faces.imageId} boxes={faces.boxes} target={faces.target} revealed />
         {faces.extra && <CardText text={faces.extra} className="text-muted-foreground mt-4 block text-base" />}
       </>
     );
   }
-  return <CardText text={faces.answer} />;
+  if (faces.kind === "cloze") {
+    return (
+      <>
+        <ClozeText segments={faces.answer} />
+        {faces.imageId && <CardPicture imageId={faces.imageId} alt="Picture on the card" className="mt-4" />}
+        {faces.extra && <CardText text={faces.extra} className="text-muted-foreground mt-4 block text-base" />}
+        {faces.extraImageId && (
+          <CardPicture imageId={faces.extraImageId} alt="Picture shown with the answer" className="mt-4" />
+        )}
+      </>
+    );
+  }
+  return <Side text={faces.answer} imageId={faces.answerImageId} alt="Picture on the answer" />;
 }

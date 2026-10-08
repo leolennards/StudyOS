@@ -10,7 +10,8 @@ settings, documents (upload PDFs, Word files, slides, text and images; text
 extraction with OCR for scanned pages; a viewer; linking documents to topics),
 notes (a rich-text editor with LaTeX maths, autosave and a trash), keyword
 search across all of it (⌘K), flashcards with spaced-repetition review
-(basic, reversed and cloze cards, scheduled with FSRS), a daily goal, streaks, a
+(basic, reversed and cloze cards with optional pictures, and image occlusion
+cards, scheduled with FSRS), a daily goal, streaks, a
 focus timer and a progress page, exam dates with a topic confidence checklist,
 practice quizzes made from flashcards, card import from Anki, Quizlet and
 CSV files, a past-paper tracker (questions, marks per topic, attempts) and a
@@ -172,6 +173,12 @@ Flashcard scheduling is FSRS through the MIT-licensed `ts-fsrs` library. The
 scheduler is pure code in `src/server/modules/flashcards/domain`, used by the
 server to record each rating and by the review screen to label the rating
 buttons and show the next card without waiting.
+
+Pictures on cards are uploaded straight to storage, then re-encoded by the
+server with sharp (WebP, at most 1600 pixels, EXIF removed). Pages show them
+through `/api/card-images/[imageId]`, which checks the session and redirects
+to a short-lived signed URL. Image occlusion boxes are stored on the card as
+fractions of the picture's size, one review item per box (ADR-021).
 
 `eslint.config.mjs` turns those layers into rules: pages cannot reach into the
 database, a module's domain functions cannot reach into anything, and a module's

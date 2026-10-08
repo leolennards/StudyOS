@@ -5,6 +5,8 @@ import { action } from "@/server/lib/action";
 import { flashcardsService } from "@/server/modules/flashcards/service";
 import {
   cardIdSchema,
+  cardImageIdSchema,
+  createCardImageSchema,
   createCardSchema,
   importCardsSchema,
   importIdSchema,
@@ -85,3 +87,13 @@ export const undoReview = action(undoReviewSchema, (ctx, input) => flashcardsSer
 export const loadReviewSession = action(reviewScopeSchema, async (ctx, input) => {
   return toClientSession(await flashcardsService.getSession(ctx, input));
 });
+
+/** Step 1 of adding a picture to a card: a signed URL to upload it to. */
+export const createCardImageUpload = action(createCardImageSchema, (ctx, input) =>
+  flashcardsService.createImageUpload(ctx, input),
+);
+
+/** Step 2: the upload has finished; the picture is checked, re-encoded and made ready. */
+export const finishCardImageUpload = action(cardImageIdSchema, (ctx, input) =>
+  flashcardsService.finishImageUpload(ctx, input),
+);

@@ -23,9 +23,9 @@ import { tsvector } from "./types";
 /**
  * Card types (Architecture §20). `reverse` is "basic and reversed": one card
  * reviewed in both directions. A cloze card is reviewed once per deletion
- * number. Image occlusion comes later.
+ * number. An image occlusion card is reviewed once per box hidden on its image.
  */
-export const cardType = pgEnum("card_type", ["basic", "reverse", "cloze"]);
+export const cardType = pgEnum("card_type", ["basic", "reverse", "cloze", "image_occlusion"]);
 
 /** Where a card came from: written by the student, generated (a later phase), or imported (ADR-018). */
 export const cardOrigin = pgEnum("card_origin", ["user", "ai", "imported"]);
@@ -63,10 +63,47 @@ export const cardImports = pgTable(
 );
 
 /**
+ * Pictures on cards (ADR-021). The browser uploads the original straight to
+ * storage; the server then re-encodes it as WebP (stripping its metadata and
+ * capping its size), deletes the original and marks the image ready. An
+ * image no card uses is deleted by the hourly clean-up a day after upload.
+ */
+export const cardImages = pgTable(
+  "card_images",
+  {
+    id: uuid("id").primaryKey(),
+    workspaceId: uuid("workspace_id").notNull(),
+    subjectId: uuid("subject_id").notNull(),
+    status: text("status").notNull().default("pending"),
+    /** The size declared for the upload while pending, then the stored WebP's size. */
+    sizeBytes: integer("size_bytes").notNull(),
+    width: integer("width"),
+    height: integer("height"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("card_images_workspace_id_id_key").on(t.workspaceId, t.id),
+    foreignKey({
+      name: "card_images_subject_fk",
+      columns: [t.workspaceId, t.subjectId],
+      foreignColumns: [subjects.workspaceId, subjects.id],
+    }).onDelete("cascade"),
+    index("card_images_created_idx").on(t.createdAt),
+    check("card_images_status_check", sql`${t.status} in ('pending', 'ready')`),
+    check("card_images_size_check", sql`${t.sizeBytes} >= 0`),
+  ],
+);
+
+/** One box hidden on an image occlusion card, in fractions of the image's width and height. */
+export type OcclusionBox = { n: number; x: number; y: number; w: number; h: number };
+
+/**
  * Flashcards. A card belongs to one subject and links to its topics; there
  * are no decks, because a deck is a filter over subject and topics (§20).
  * For a cloze card `front` holds the text with its deletions and `back` any
- * extra detail shown with the answer.
+ * extra detail shown with the answer. Either side may also have a picture.
+ * An image occlusion card has its picture on the front, the boxes hidden on
+ * it in `occlusions`, an optional prompt in `front` and extra detail in `back`.
  */
 export const cards = pgTable(
   "cards",
@@ -77,6 +114,9 @@ export const cards = pgTable(
     type: cardType("type").notNull(),
     front: text("front").notNull(),
     back: text("back").notNull().default(""),
+    frontImageId: uuid("front_image_id"),
+    backImageId: uuid("back_image_id"),
+    occlusions: jsonb("occlusions").$type<OcclusionBox[]>(),
     origin: cardOrigin("origin").notNull().default("user"),
     /** The note or document page the card was made from, if any. Cleared if the source is deleted. */
     sourceNoteId: uuid("source_note_id").references(() => notes.id, { onDelete: "set null" }),
@@ -106,10 +146,24 @@ export const cards = pgTable(
       columns: [t.workspaceId, t.importId],
       foreignColumns: [cardImports.workspaceId, cardImports.id],
     }).onDelete("cascade"),
+    foreignKey({
+      name: "cards_front_image_fk",
+      columns: [t.workspaceId, t.frontImageId],
+      foreignColumns: [cardImages.workspaceId, cardImages.id],
+    }),
+    foreignKey({
+      name: "cards_back_image_fk",
+      columns: [t.workspaceId, t.backImageId],
+      foreignColumns: [cardImages.workspaceId, cardImages.id],
+    }),
     index("cards_subject_idx").on(t.workspaceId, t.subjectId, t.createdAt),
     index("cards_import_idx").on(t.workspaceId, t.importId),
     index("cards_search_idx").using("gin", t.searchVector),
     check("cards_source_page_positive", sql`${t.sourcePage} is null or ${t.sourcePage} > 0`),
+    check(
+      "cards_occlusions_check",
+      sql`(${t.type}::text = 'image_occlusion') = (${t.occlusions} is not null and ${t.frontImageId} is not null)`,
+    ),
   ],
 );
 

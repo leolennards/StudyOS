@@ -9,6 +9,10 @@ import { storageOrigin } from "@/server/platform/storage/origin";
 export function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const isDev = process.env.NODE_ENV !== "production";
+  // Upgrading requests only makes sense when the site itself is served over
+  // https; on a plain-http production build (the end-to-end tests) it would
+  // turn same-origin redirects, like a card picture's, into failing https ones.
+  const upgrade = !isDev && process.env.BETTER_AUTH_URL?.startsWith("https:") !== false;
   // With S3 storage the browser uploads to and reads from the bucket directly.
   const storage = storageOrigin() ?? "";
 
@@ -27,7 +31,7 @@ export function proxy(request: NextRequest) {
     `frame-ancestors 'none'`,
     `base-uri 'self'`,
     `object-src 'none'`,
-    ...(isDev ? [] : [`upgrade-insecure-requests`]),
+    ...(upgrade ? [`upgrade-insecure-requests`] : []),
   ].join("; ");
 
   const headers = new Headers(request.headers);

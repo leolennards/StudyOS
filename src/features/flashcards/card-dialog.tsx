@@ -20,9 +20,12 @@ import { useAction } from "@/features/knowledge/use-action";
 import { cn } from "@/lib/utils";
 import { createCard, updateCard } from "@/server/actions/flashcards";
 import { clozeNumbers } from "@/server/modules/flashcards/domain/cloze";
+import { boxNumbers, type OcclusionBox } from "@/server/modules/flashcards/domain/occlusion";
 import { CARD_TYPE_LABELS, cardProblem, type CardType, itemFaces } from "@/server/modules/flashcards/domain/items";
 import { CARD_TEXT_MAX } from "@/server/modules/flashcards/domain/limits";
 import { ItemAnswer, ItemQuestion } from "./card-text";
+import { OcclusionEditor } from "./occlusion-editor";
+import { PictureField } from "./picture-field";
 
 export type CardDraft = {
   type?: CardType;
@@ -37,7 +40,19 @@ export type CardDraft = {
 /** What the dialog is doing: adding a card (optionally pre-filled, say from a selection) or editing one. */
 export type CardDialogState =
   | { mode: "create"; draft: CardDraft }
-  | { mode: "edit"; card: { id: string; type: CardType; front: string; back: string; topicIds: string[] } };
+  | {
+      mode: "edit";
+      card: {
+        id: string;
+        type: CardType;
+        front: string;
+        back: string;
+        frontImageId: string | null;
+        backImageId: string | null;
+        occlusions: OcclusionBox[] | null;
+        topicIds: string[];
+      };
+    };
 
 type Props = {
   subjectId: string;
@@ -50,6 +65,7 @@ const TYPE_HINTS: Record<CardType, string> = {
   basic: "A question on the front, the answer on the back.",
   reverse: "Asked both ways: front to back, and back to front.",
   cloze: "Hide parts of a sentence. Each {{c1::…}} number is asked separately.",
+  image_occlusion: "Hide parts of a picture, such as the labels on a diagram. Each box is asked separately.",
 };
 
 /** Add or edit a flashcard, with a live preview of how it will be asked. */
@@ -71,16 +87,23 @@ function CardForm({ subjectId, groups, state, onClose }: Omit<Props, "state"> & 
   const [type, setType] = useState<CardType>(initial.type ?? "basic");
   const [front, setFront] = useState(initial.front ?? "");
   const [back, setBack] = useState(initial.back ?? "");
+  const [frontImageId, setFrontImageId] = useState<string | null>(
+    state.mode === "edit" ? state.card.frontImageId : null,
+  );
+  const [backImageId, setBackImageId] = useState<string | null>(state.mode === "edit" ? state.card.backImageId : null);
+  const [boxes, setBoxes] = useState<OcclusionBox[]>(state.mode === "edit" ? (state.card.occlusions ?? []) : []);
   const [topicIds, setTopicIds] = useState(() => new Set(initial.topicIds ?? []));
   const [error, setError] = useState<string | null>(null);
   const [added, setAdded] = useState(0);
   const frontRef = useRef<HTMLTextAreaElement>(null);
   const hasTopics = groups.some((g) => g.topics.length > 0);
   const isCloze = type === "cloze";
+  const isOcclusion = type === "image_occlusion";
 
-  const problem = cardProblem({ type, front, back });
-  const numbers = isCloze ? clozeNumbers(front) : [];
-  const previewFaces = problem ? null : itemFaces({ type, front, back }, isCloze ? numbers[0]! : 0);
+  const content = { type, front, back, frontImageId, backImageId, occlusions: boxes };
+  const problem = cardProblem(content);
+  const numbers = isCloze ? clozeNumbers(front) : isOcclusion ? boxNumbers(boxes) : [];
+  const previewFaces = problem ? null : itemFaces(content, isCloze || isOcclusion ? numbers[0]! : 0);
 
   const toggleTopic = (topicId: string, on: boolean) =>
     setTopicIds((s) => {
@@ -113,7 +136,15 @@ function CardForm({ subjectId, groups, state, onClose }: Omit<Props, "state"> & 
       setError(problem);
       return;
     }
-    const fields = { type, front, back, topicIds: [...topicIds] };
+    const fields = {
+      type,
+      front,
+      back,
+      frontImageId,
+      backImageId: isOcclusion ? null : backImageId,
+      occlusions: isOcclusion ? boxes : null,
+      topicIds: [...topicIds],
+    };
     const result = await run(
       () =>
         state.mode === "edit"
@@ -133,6 +164,9 @@ function CardForm({ subjectId, groups, state, onClose }: Omit<Props, "state"> & 
       setAdded((n) => n + 1);
       setFront("");
       setBack("");
+      setFrontImageId(null);
+      setBackImageId(null);
+      setBoxes([]);
       frontRef.current?.focus();
     } else {
       onClose();
@@ -190,7 +224,7 @@ function CardForm({ subjectId, groups, state, onClose }: Omit<Props, "state"> & 
 
       <div className="grid gap-2">
         <div className="flex items-end justify-between gap-2">
-          <Label htmlFor={`${id}-front`}>{isCloze ? "Text" : "Front"}</Label>
+          <Label htmlFor={`${id}-front`}>{isCloze ? "Text" : isOcclusion ? "Prompt (optional)" : "Front"}</Label>
           {isCloze && (
             <Button type="button" variant="outline" size="sm" onClick={hideSelection}>
               <EyeOff aria-hidden />
@@ -207,8 +241,14 @@ function CardForm({ subjectId, groups, state, onClose }: Omit<Props, "state"> & 
           onChange={(e) => setFront(e.target.value)}
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? `${id}-error` : isCloze ? `${id}-cloze-hint` : undefined}
-          placeholder={isCloze ? "The {{c1::mitochondria}} is the powerhouse of the cell." : "What is the question?"}
-          className="min-h-24"
+          placeholder={
+            isCloze
+              ? "The {{c1::mitochondria}} is the powerhouse of the cell."
+              : isOcclusion
+                ? "Name the labelled part of the heart."
+                : "What is the question?"
+          }
+          className={isOcclusion ? "min-h-12" : "min-h-24"}
         />
         {isCloze && (
           <p id={`${id}-cloze-hint`} className="text-muted-foreground text-sm">
@@ -218,17 +258,77 @@ function CardForm({ subjectId, groups, state, onClose }: Omit<Props, "state"> & 
               : "Add a hint after a second ::, like {{c1::answer::hint}}."}
           </p>
         )}
+        {isCloze || isOcclusion ? null : (
+          <PictureField
+            subjectId={subjectId}
+            imageId={frontImageId}
+            onChange={setFrontImageId}
+            label="Picture on the front"
+          />
+        )}
       </div>
 
-      <FormField id={`${id}-back`} label={isCloze ? "Extra (optional)" : "Back"}>
-        <Textarea
-          value={back}
-          maxLength={CARD_TEXT_MAX}
-          onChange={(e) => setBack(e.target.value)}
-          placeholder={isCloze ? "Anything to show with the answer" : "And the answer?"}
-          className="min-h-20"
-        />
-      </FormField>
+      {isOcclusion && (
+        <div className="grid gap-2">
+          <p className="text-sm font-medium">Picture</p>
+          {frontImageId ? (
+            <>
+              <p id={`${id}-boxes-hint`} className="text-muted-foreground text-sm">
+                Drag over each part to hide.{" "}
+                {numbers.length > 0
+                  ? `This card will be asked ${numbers.length} ${numbers.length === 1 ? "way" : "ways"}.`
+                  : "Each box is asked on its own."}
+              </p>
+              <OcclusionEditor
+                imageId={frontImageId}
+                boxes={boxes}
+                onChange={setBoxes}
+                describedBy={`${id}-boxes-hint`}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="w-fit"
+                onClick={() => {
+                  setFrontImageId(null);
+                  setBoxes([]);
+                }}
+              >
+                Use a different picture
+              </Button>
+            </>
+          ) : (
+            <PictureField
+              subjectId={subjectId}
+              imageId={null}
+              onChange={setFrontImageId}
+              label="Picture to hide parts of"
+              addLabel="Choose a picture"
+            />
+          )}
+        </div>
+      )}
+
+      <div className="grid gap-2">
+        <FormField id={`${id}-back`} label={isCloze || isOcclusion ? "Extra (optional)" : "Back"}>
+          <Textarea
+            value={back}
+            maxLength={CARD_TEXT_MAX}
+            onChange={(e) => setBack(e.target.value)}
+            placeholder={isCloze || isOcclusion ? "Anything to show with the answer" : "And the answer?"}
+            className={isOcclusion ? "min-h-12" : "min-h-20"}
+          />
+        </FormField>
+        {!isOcclusion && (
+          <PictureField
+            subjectId={subjectId}
+            imageId={backImageId}
+            onChange={setBackImageId}
+            label={isCloze ? "Picture shown with the answer" : "Picture on the back"}
+          />
+        )}
+      </div>
 
       {hasTopics && (
         <fieldset className="grid gap-1">
@@ -261,7 +361,7 @@ function CardForm({ subjectId, groups, state, onClose }: Omit<Props, "state"> & 
         </fieldset>
       )}
 
-      {previewFaces && (
+      {previewFaces && !isOcclusion && (
         <section aria-label="Preview" className="bg-muted/40 grid gap-3 rounded-lg border p-4 text-sm">
           <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
             Preview{isCloze && numbers.length > 1 ? ` (c${numbers[0]} of ${numbers.length})` : ""}
