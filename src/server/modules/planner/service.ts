@@ -212,6 +212,16 @@ export const plannerService = {
     };
   },
 
+  /** Confidence, recall, quiz and past-paper scores for each of these topics, for planning. */
+  getTopicStandings(
+    ctx: RequestContext,
+    subjectId: string | null,
+    topics: { topicId: string; topicName: string; level: number | null }[],
+    now = new Date(),
+  ) {
+    return topicStandings(ctx, subjectId, topics, now);
+  },
+
   // ── writes ────────────────────────────────────────────────────────────────
   async createDeadline(ctx: RequestContext, input: In<typeof createDeadlineSchema>, now = new Date()) {
     assertCanWrite(ctx);

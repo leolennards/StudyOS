@@ -13,10 +13,10 @@ search across all of it (⌘K), flashcards with spaced-repetition review
 (basic, reversed and cloze cards, scheduled with FSRS), a daily goal, streaks, a
 focus timer and a progress page, exam dates with a topic confidence checklist,
 practice quizzes made from flashcards, card import from Anki, Quizlet and
-CSV files, and a past-paper tracker (questions, marks per topic, attempts) are
-built and tested. AI (including generated quizzes), extracting questions from
-past-paper files and generated study plans are designed but not
-implemented — see `CURRENT STATUS.md` in the project documentation for what exists and what does
+CSV files, a past-paper tracker (questions, marks per topic, attempts) and a
+weekly study plan built from free time, exams and weakest topics are built and
+tested. AI (including generated quizzes) and extracting questions from
+past-paper files are designed but not implemented — see `CURRENT STATUS.md` in the project documentation for what exists and what does
 not.
 
 ## Architecture in one paragraph

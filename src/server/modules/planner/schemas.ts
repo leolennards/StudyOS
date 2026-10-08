@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CONFIDENCE_LEVELS, DEADLINE_KINDS, PLANNER_LIMITS } from "./domain/exams";
+import { PLAN_ITEM_STATUSES, PLAN_LIMITS } from "./domain/plan";
 
 /** Input schemas shared by the exam forms (client) and the actions (server). */
 
@@ -62,5 +63,22 @@ export const setTopicConfidenceSchema = z.object({
     .union([z.literal(CONFIDENCE_LEVELS[0]), z.literal(CONFIDENCE_LEVELS[1]), z.literal(CONFIDENCE_LEVELS[2])])
     .nullable(),
 });
+
+/** Free minutes on each day of the week, Monday first. Accepts the form's strings. */
+export const saveWeekSchema = z.object({
+  weekMinutes: z
+    .array(
+      z.coerce
+        .number({ error: "Enter a number of minutes" })
+        .int("Use whole minutes")
+        .min(0, "Can't be less than 0")
+        .max(PLAN_LIMITS.minutesPerDay, "That's more than 12 hours"),
+    )
+    .length(7),
+});
+
+export const setPlanItemStatusSchema = z.object({ id, status: z.enum(PLAN_ITEM_STATUSES) });
+
+export const movePlanItemSchema = z.object({ id, day: calendarDate });
 
 export type DeadlineFormInput = z.input<typeof createDeadlineSchema>;

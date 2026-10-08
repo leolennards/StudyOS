@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { NewSubjectButton } from "@/features/knowledge/new-subject-button";
 import { NextExamCard } from "@/features/planner/next-exam-card";
+import { TodayPlanCard } from "@/features/plan/today-plan-card";
 import { HabitsCard } from "@/features/progress/habits-card";
 import { SubjectDot } from "@/features/knowledge/subject-dot";
 import { cn } from "@/lib/utils";
@@ -14,6 +15,7 @@ import { knowledgeService } from "@/server/modules/knowledge/service";
 import { formatInterval } from "@/server/modules/flashcards/domain/scheduler";
 import { flashcardsService } from "@/server/modules/flashcards/service";
 import { libraryService } from "@/server/modules/library/service";
+import { studyPlanService } from "@/server/modules/planner/plan-service";
 import { plannerService } from "@/server/modules/planner/service";
 import { progressService } from "@/server/modules/progress/service";
 import { settingsService } from "@/server/modules/settings/service";
@@ -32,7 +34,7 @@ function greeting(timezone: string) {
 export default async function TodayPage() {
   const { user, ctx } = await requirePageSession();
   const now = new Date();
-  const [subjects, settings, documentCount, review, habits, waitingBySubject, nextExam] = await Promise.all([
+  const [subjects, settings, documentCount, review, habits, waitingBySubject, nextExam, plan] = await Promise.all([
     knowledgeService.listSubjects(ctx),
     settingsService.get(ctx),
     libraryService.countDocuments(ctx),
@@ -40,6 +42,7 @@ export default async function TodayPage() {
     progressService.getHabits(ctx, now),
     flashcardsService.getSubjectCounts(ctx, now),
     plannerService.getNextDeadline(ctx, now),
+    studyPlanService.getToday(ctx, now),
   ]);
   const firstName = user.name.split(/\s+/)[0];
   const date = new Intl.DateTimeFormat("en-GB", {
@@ -87,6 +90,12 @@ export default async function TodayPage() {
       <div className="mt-8">
         <HabitsCard habits={habits} />
       </div>
+
+      {(plan || subjects.length > 0) && (
+        <div className="mt-6">
+          <TodayPlanCard plan={plan} />
+        </div>
+      )}
 
       {nextExam && (
         <div className="mt-6">

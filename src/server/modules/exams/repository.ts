@@ -57,6 +57,15 @@ export const examsRepository = {
     );
   },
 
+  /** Every paper in these subjects. */
+  listPapersIn(db: DbExecutor, ws: string, subjectIds: string[]) {
+    if (subjectIds.length === 0) return Promise.resolve([]);
+    return db
+      .select()
+      .from(pastPapers)
+      .where(and(eq(pastPapers.workspaceId, ws), inArray(pastPapers.subjectId, subjectIds)));
+  },
+
   // ── questions ─────────────────────────────────────────────────────────────
   /** The questions on these papers, in order, each with the topics it tests. */
   async listQuestions(db: DbExecutor, ws: string, paperIds: string[]) {
