@@ -50,12 +50,7 @@ export function PictureField({
       {imageId ? (
         <div className="flex items-start gap-2">
           <CardPicture imageId={imageId} alt={label} className="mx-0 max-h-40" />
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={() => onChange(null)}
-          >
+          <Button type="button" variant="ghost" size="icon" onClick={() => onChange(null)}>
             <X aria-hidden />
             <span className="sr-only">Remove {label.toLowerCase()}</span>
           </Button>
