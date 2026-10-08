@@ -3,6 +3,7 @@ import type { RequestContext } from "@/server/lib/context";
 import { AppError, notFound } from "@/server/lib/errors";
 import { newId } from "@/server/lib/ids";
 import { getDb } from "@/server/platform/db/client";
+import { examsService } from "@/server/modules/exams/service";
 import { knowledgeService } from "@/server/modules/knowledge/service";
 import { addDays, dateKey } from "@/server/modules/progress/domain/calendar";
 import { progressService } from "@/server/modules/progress/service";
@@ -83,17 +84,21 @@ function assertSensibleDate(dueOn: string, todayKey: string) {
   }
 }
 
-/** Confidence, recent recall and recent quiz results for each covered topic. */
+/** Confidence, recent recall, recent quiz results and past-paper scores for each covered topic. */
 async function topicStandings(
   ctx: RequestContext,
+  subjectId: string | null,
   topics: { topicId: string; topicName: string; level: number | null }[],
   now: Date,
 ) {
-  const study = await progressService.getTopicStudy(
-    ctx,
-    topics.map((t) => t.topicId),
-    now,
-  );
+  const [study, papers] = await Promise.all([
+    progressService.getTopicStudy(
+      ctx,
+      topics.map((t) => t.topicId),
+      now,
+    ),
+    subjectId ? examsService.getTopicScores(ctx, subjectId) : new Map<string, { score: number | null }>(),
+  ]);
   return topics.map((t) => {
     const s = study.get(t.topicId);
     const quiz = s?.quiz ?? null;
@@ -106,6 +111,8 @@ async function topicStandings(
       /** Quiz questions on the topic answered in the last month, and how many were right. */
       quiz,
       quizScore: quiz && quiz.answered > 0 ? quiz.correct / quiz.answered : null,
+      /** Share of the topic's marks gained in the latest attempt at each past paper, or null if none covers it. */
+      paperScore: papers.get(t.topicId)?.score ?? null,
     };
   });
 }
@@ -150,7 +157,7 @@ export const plannerService = {
       repo.coveredTopics(db, ctx.workspaceId, [id]),
       deadline.subject ? knowledgeService.getSubjectTree(ctx, deadline.subject.id) : null,
     ]);
-    const topics = await topicStandings(ctx, covered, now);
+    const topics = await topicStandings(ctx, deadline.subject?.id ?? null, covered, now);
     return {
       ...deadline,
       today: todayKey,
@@ -197,7 +204,7 @@ export const plannerService = {
     const next = upcoming[0];
     if (!next) return null;
     const covered = await repo.coveredTopics(getDb(), ctx.workspaceId, [next.id]);
-    const topics = await topicStandings(ctx, covered, now);
+    const topics = await topicStandings(ctx, next.subject?.id ?? null, covered, now);
     return {
       ...next,
       workOn: workOrder(topics.filter((t) => t.confidence !== 3)).slice(0, 3),

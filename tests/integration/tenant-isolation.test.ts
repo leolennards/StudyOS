@@ -2,6 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { closeDb } from "@/server/platform/db/client";
 import { newId } from "@/server/lib/ids";
 import { isAppError } from "@/server/lib/errors";
+import { examsService } from "@/server/modules/exams/service";
 import { flashcardsService } from "@/server/modules/flashcards/service";
 import { knowledgeService } from "@/server/modules/knowledge/service";
 import { settingsService } from "@/server/modules/settings/service";
@@ -471,5 +472,85 @@ describe("search is scoped to the workspace", () => {
     expect(await denied(() => searchService.search(bob, { q: "alice", subjectId: aliceData.subjectId }))).toBe(
       "NOT_FOUND",
     );
+  });
+});
+
+describe("past papers are scoped to the workspace", () => {
+  let paperId: string;
+  let questionId: string;
+  let attemptId: string;
+
+  beforeEach(async () => {
+    paperId = (await examsService.createPaper(alice, { subjectId: aliceData.subjectId, title: "Alice's paper" })).id;
+    await examsService.setQuestions(alice, {
+      paperId,
+      questions: [{ number: "1", marks: 5, topicIds: [aliceData.topicId] }],
+    });
+    questionId = (await examsService.getPaper(alice, paperId)).questions[0].id;
+    attemptId = (
+      await examsService.logAttempt(
+        alice,
+        { paperId, takenOn: "2026-01-01", marks: [{ questionId, awarded: 3 }] },
+        new Date("2026-10-07T12:00:00Z"),
+      )
+    ).id;
+  });
+
+  it("Bob cannot list, read or analyse Alice's papers", async () => {
+    expect(await denied(() => examsService.getSubjectPapers(bob, aliceData.subjectId))).toBe("NOT_FOUND");
+    expect(await denied(() => examsService.getPaper(bob, paperId))).toBe("NOT_FOUND");
+    expect((await examsService.getTopicScores(bob, aliceData.subjectId)).size).toBe(0);
+  });
+
+  it("Bob cannot add a paper to Alice's subject", async () => {
+    expect(
+      await denied(() => examsService.createPaper(bob, { subjectId: aliceData.subjectId, title: "Bob's paper" })),
+    ).toBe("NOT_FOUND");
+  });
+
+  it("Bob cannot edit, re-question, sit or delete Alice's paper, or delete her attempt", async () => {
+    expect(await denied(() => examsService.updatePaper(bob, { id: paperId, title: "Mine" }))).toBe("NOT_FOUND");
+    expect(await denied(() => examsService.setQuestions(bob, { paperId, questions: [] }))).toBe("NOT_FOUND");
+    expect(
+      await denied(() =>
+        examsService.logAttempt(bob, { paperId, takenOn: "2026-01-02", marks: [{ questionId, awarded: 5 }] }),
+      ),
+    ).toBe("NOT_FOUND");
+    expect(await denied(() => examsService.deleteAttempt(bob, { id: attemptId }))).toBe("NOT_FOUND");
+    expect(await denied(() => examsService.deletePaper(bob, { id: paperId }))).toBe("NOT_FOUND");
+    const paper = await examsService.getPaper(alice, paperId);
+    expect(paper.questions).toHaveLength(1);
+    expect(paper.attempts).toHaveLength(1);
+  });
+
+  it("Bob cannot use Alice's topic, question or document on his own paper", async () => {
+    const bobSubject = await knowledgeService.createSubject(bob, {
+      name: "Bob's",
+      code: null,
+      term: null,
+      description: null,
+      colour: "teal",
+    });
+    const bobPaper = (await examsService.createPaper(bob, { subjectId: bobSubject.id, title: "Bob's paper" })).id;
+    expect(
+      await denied(() =>
+        examsService.setQuestions(bob, {
+          paperId: bobPaper,
+          questions: [{ number: "1", marks: 2, topicIds: [aliceData.topicId] }],
+        }),
+      ),
+    ).toBe("VALIDATION");
+    expect(
+      await denied(() =>
+        examsService.setQuestions(bob, {
+          paperId: bobPaper,
+          questions: [{ id: questionId, number: "1", marks: 2, topicIds: [] }],
+        }),
+      ),
+    ).toBe("CONFLICT");
+    const aliceDoc = await uploadFixture(alice, aliceData.subjectId, "reading.txt", { process: false });
+    expect(
+      await denied(() => examsService.updatePaper(bob, { id: bobPaper, title: "Bob's paper", documentId: aliceDoc })),
+    ).toBe("VALIDATION");
   });
 });

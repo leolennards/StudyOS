@@ -82,18 +82,20 @@ export type TopicStanding = {
   recall: number | null;
   /** Share of quiz questions answered right recently, or null with none. */
   quizScore?: number | null;
+  /** Share of the topic's past-paper marks gained, or null with none. */
+  paperScore?: number | null;
 };
 
-/** The weaker of a topic's review recall and quiz score, whichever are known; 1 when neither is. */
+/** The weakest of a topic's review recall, quiz score and past-paper score, whichever are known; 1 when none is. */
 function evidence(t: TopicStanding): number {
-  const known = [t.recall, t.quizScore].filter((v): v is number => v !== null && v !== undefined);
+  const known = [t.recall, t.quizScore, t.paperScore].filter((v): v is number => v !== null && v !== undefined);
   return known.length > 0 ? Math.min(...known) : 1;
 }
 
 /**
  * The order to work on topics before an exam: lowest confidence first
  * (unrated counts as lowest, since nothing is known), then the ones the
- * student did worst on, in review or in quizzes. Ties keep their original order.
+ * student did worst on, in review, quizzes or past papers. Ties keep their original order.
  */
 export function workOrder<T extends TopicStanding>(topics: T[]): T[] {
   return topics
